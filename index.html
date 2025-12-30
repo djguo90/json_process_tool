@@ -978,6 +978,88 @@
       document.body.removeChild(textarea);
     }
   }
+  // ===========
+  // 一键打开编辑器（可配置）
+  // ===========
+
+  window.APP_EDITOR = window.APP_EDITOR || {
+    // "copy" | "uri" | "api"
+    mode: "copy",
+
+    // mode="uri" 时使用：把 {{path}} 替换成编码后的路径
+    // 例：本地开发可用： "vscode://file{{path}}"
+    uriTemplate: "vscode://file{{path}}",
+
+    // mode="api" 时使用：后端返回 {success:true, url:"..."}
+    apiEndpoint: "/api/editor_link",
+
+    // true：新标签页打开；false：当前页跳转（一般建议 true）
+    openInNewTab: true
+  };
+
+  function preventButtonStealFocus(btn) {
+    btn.addEventListener("pointerdown", ev => ev.preventDefault());
+    btn.addEventListener("mousedown", ev => ev.preventDefault());
+  }
+
+  function encodePathForUri(p) {
+    p = (p || "").replace(/\\/g, "/");
+
+    // Windows: C:\a\b -> /c:/a/b
+    const m = p.match(/^([A-Za-z]):[\\/](.*)$/);
+    if (m) p = `/${m[1].toLowerCase()}:/` + m[2];
+
+    if (!p.startsWith("/")) p = "/" + p;
+    return encodeURI(p); // 保留 / : 等，空格会编码
+  }
+
+  async function openPathInEditor(rawPath, taskId) {
+    const resolved = resolveTaskVarsInString((rawPath || "").trim(), taskId).trim();
+    if (!resolved) {
+      showMessage("路径为空，无法打开。");
+      return;
+    }
+
+    const cfg = window.APP_EDITOR || { mode: "copy" };
+
+    if (cfg.mode === "copy") {
+      copyToClipboard(resolved);
+      showMessage("已复制路径：" + resolved);
+      return;
+    }
+
+    if (cfg.mode === "uri") {
+      const tpl = cfg.uriTemplate || "vscode://file{{path}}";
+      const url = tpl.replaceAll("{{path}}", encodePathForUri(resolved));
+      if (cfg.openInNewTab) window.open(url, "_blank");
+      else window.location.href = url;
+      return;
+    }
+
+    if (cfg.mode === "api") {
+      const endpoint = cfg.apiEndpoint || "/api/editor_link";
+      try {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: resolved })
+        });
+        const data = await res.json();
+        if (!data || !data.success || !data.url) {
+          showMessage("无法获取编辑器链接：" + (data?.error || "未知错误"));
+          return;
+        }
+        if (cfg.openInNewTab) window.open(data.url, "_blank");
+        else window.location.href = data.url;
+      } catch (e) {
+        console.error(e);
+        showMessage("打开编辑器失败（网络/后端问题）。");
+      }
+      return;
+    }
+
+    showMessage("未知打开模式 APP_EDITOR.mode=" + cfg.mode);
+  }
 
   function saveWidthsToLocal(widths) {
     localStorage.setItem(colWidthsKey, JSON.stringify(widths));
@@ -2299,6 +2381,18 @@
       const resultInput = document.createElement("input");
       resultInput.value = node.result_save_path || "";
       resultLabel.appendChild(resultInput);
+      // ✅ 新增：打开结果路径按钮
+      const btnOpenResult = document.createElement("button");
+      btnOpenResult.type = "button";
+      btnOpenResult.textContent = "打开该路径";
+      preventButtonStealFocus(btnOpenResult);
+      btnOpenResult.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openPathInEditor(node.result_save_path || "", seq.task_id);
+      });
+      resultLabel.appendChild(btnOpenResult);
+
       edit.appendChild(resultLabel);
 
       const descLabel = document.createElement("label");
@@ -2624,6 +2718,19 @@
       const codeInput = document.createElement("input");
       codeInput.value = seq.code_save_path || "";
       codeLabel.appendChild(codeInput);
+
+      // ✅ 新增：一键打开按钮
+      const btnOpenCode = document.createElement("button");
+      btnOpenCode.type = "button";
+      btnOpenCode.textContent = "打开代码位置";
+      preventButtonStealFocus(btnOpenCode);
+      btnOpenCode.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openPathInEditor(seq.code_save_path || "", seq.task_id);
+      });
+      codeLabel.appendChild(btnOpenCode);
+
       meta.appendChild(codeLabel);
 
       // 取到标题第二行（上面 A1 已保证一定存在）

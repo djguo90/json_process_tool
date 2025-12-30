@@ -12,6 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from urllib.parse import quote
+from fastapi import Body
+
 # ======================
 # 日志：静音 /api/path_exists
 # ======================
@@ -1206,3 +1209,23 @@ def get_task_config(task_id: str, sequence_id: Optional[str] = None):
         "sequence": seq,
         "sequence_group": seq_group,
     }
+
+EDITOR_URI_TEMPLATE = os.getenv("EDITOR_URI_TEMPLATE", "")  
+# 例（本地/桌面）：vscode://file{{path}}
+# 例（你自建跳转页）：https://yourhost/editor/open?path={{path}}
+# 例（code-server）：（按你实际 code-server URL 规则来拼）
+
+@app.post("/api/editor_link")
+def editor_link(payload: dict = Body(...)):
+    path = (payload.get("path") or "").strip()
+    if not path:
+        return {"success": False, "error": "path empty"}
+
+    tpl = (EDITOR_URI_TEMPLATE or "").strip()
+    if not tpl:
+        return {"success": False, "error": "EDITOR_URI_TEMPLATE not set"}
+
+    # 编码：尽量保留常见路径字符
+    encoded = quote(path.replace("\\", "/"), safe="/:._-+@,()[]{} ")
+    url = tpl.replace("{{path}}", encoded)
+    return {"success": True, "url": url}
