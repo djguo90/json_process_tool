@@ -1,4 +1,5 @@
 from typing import Any, List, Optional, Union
+from functools import lru_cache
 from dataclasses import dataclass
 import glob
 import json
@@ -20,6 +21,7 @@ class PathStep:
     indices: Optional[List[int]] = None
 
 
+@lru_cache(maxsize=1024)
 def _parse_path(path: str) -> List[PathStep]:
     """
     将路径字符串解析为 PathStep 列表。
