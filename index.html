@@ -1,0 +1,4004 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JSONL 处理工具</title>
+  <style>
+    :root{
+      --app-bg:#f6f7fb;
+      --panel:#ffffff;
+      --panel-2:#fbfcff;
+  
+      --text:#0f172a;
+      --muted:#64748b;
+  
+      --border:rgba(15,23,42,.12);
+      --border-2:rgba(15,23,42,.08);
+  
+      --accent:#2563eb;
+      --accent-2:#1d4ed8;
+      --accent-bg:rgba(37,99,235,.10);
+  
+      --ok-bg:rgba(34,197,94,.10);
+      --ok-border:rgba(34,197,94,.35);
+  
+      --shadow-sm:0 1px 2px rgba(0,0,0,.06);
+      --shadow:0 1px 2px rgba(0,0,0,.05), 0 12px 28px rgba(0,0,0,.08);
+  
+      --radius:14px;
+      --radius-sm:12px;
+      --radius-xs:10px;
+  
+      --focus:0 0 0 3px rgba(37,99,235,.18);
+    }
+  
+    *{ box-sizing:border-box; }
+    html, body{
+      margin:0; padding:0; height:100%;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans","PingFang SC","Microsoft YaHei",sans-serif;
+      font-size:14px;
+      color:var(--text);
+      background:var(--app-bg);
+    }
+  
+    /* App Layout */
+    #app{
+      height:100vh;
+      display:flex;
+      flex-direction:column;
+    }
+  
+    /* Top Bar */
+    #top-bar{
+      flex:0 0 auto;
+      padding:10px 12px;
+      border-bottom:1px solid var(--border-2);
+      background:rgba(255,255,255,.86);
+      backdrop-filter:saturate(180%) blur(10px);
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      position:sticky;
+      top:0;
+      z-index:50;
+    }
+    #top-bar .left{
+      font-weight:800;
+      letter-spacing:.2px;
+      color:var(--text);
+    }
+    #top-bar .right{
+      display:flex;
+      align-items:center;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+  
+    /* Buttons (only style, no behavior changes) */
+    button{
+      appearance:none;
+      border:1px solid var(--border);
+      background:var(--panel);
+      color:var(--text);
+      padding:7px 10px;
+      border-radius:10px;
+      cursor:pointer;
+      box-shadow:var(--shadow-sm);
+      transition:transform .08s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
+      user-select:none;
+    }
+    button:hover{
+      background:var(--panel-2);
+      border-color:rgba(37,99,235,.35);
+      box-shadow:0 8px 20px rgba(0,0,0,.10);
+    }
+    button:active{
+      transform:translateY(1px);
+      box-shadow:var(--shadow-sm);
+    }
+    button:focus-visible{
+      outline:none;
+      box-shadow:var(--shadow-sm), var(--focus);
+      border-color:rgba(37,99,235,.55);
+    }
+  
+    /* Make "手动保存" feel primary without changing id/behavior */
+    #btn-save{
+      background:var(--accent);
+      border-color:var(--accent);
+      color:#fff;
+    }
+    #btn-save:hover{ background:var(--accent-2); border-color:var(--accent-2); }
+  
+    /* Main 4-column grid */
+    #main{
+      flex:1 1 auto;
+      display:grid;
+      grid-template-columns: var(--col1, 24.5%) 6px var(--col2, 24.5%) 6px var(--col3, 24.5%) 6px var(--col4, 24.5%);
+      overflow:hidden;
+      padding:12px;
+      gap:0;
+    }
+  
+    .column{
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+      background:var(--panel);
+      border:1px solid var(--border-2);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      min-width:0;
+    }
+    .column-header{
+      flex:0 0 auto;
+      padding:10px 12px;
+      font-weight:800;
+      border-bottom:1px solid var(--border-2);
+      background:linear-gradient(to bottom, #ffffff, #f8fafc);
+    }
+    .column-content{
+      flex:1 1 auto;
+      padding:10px;
+      overflow:auto;
+    }
+  
+    /* Scrollbar (WebKit) */
+    .column-content::-webkit-scrollbar{ width:10px; height:10px; }
+    .column-content::-webkit-scrollbar-track{ background:transparent; }
+    .column-content::-webkit-scrollbar-thumb{
+      background:rgba(15,23,42,.18);
+      border-radius:999px;
+      border:3px solid transparent;
+      background-clip:content-box;
+    }
+    .column-content::-webkit-scrollbar-thumb:hover{
+      background:rgba(15,23,42,.28);
+      border:3px solid transparent;
+      background-clip:content-box;
+    }
+  
+    /* Resize handles */
+    .resize-handle{
+      cursor:col-resize;
+      background:transparent;
+      position:relative;
+    }
+    .resize-handle::before{
+      content:"";
+      position:absolute;
+      left:2px;
+      top:14px;
+      bottom:14px;
+      width:2px;
+      border-radius:999px;
+      background:rgba(15,23,42,.18);
+      transition:background .15s ease, transform .15s ease;
+    }
+    .resize-handle:hover::before{
+      background:rgba(37,99,235,.55);
+      transform:scaleX(1.2);
+    }
+  
+    /* ===== Task tree ===== */
+    .tree-row{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      padding:7px 8px;
+      border-radius:10px;
+      user-select:none;
+    }
+    .tree-row.task-row{ cursor:pointer; }
+    .tree-row:hover{ background:rgba(15,23,42,.04); }
+    .tree-row.task-row.active{
+      background:var(--accent-bg);
+      box-shadow:0 0 0 1px rgba(37,99,235,.25) inset;
+    }
+  
+    .tree-row.dragging{ opacity:0.6; }
+    .tree-row.drag-over-top{ box-shadow:0 -2px 0 0 var(--accent); }
+    .tree-row.drag-over-bottom{ box-shadow:0 2px 0 0 var(--accent); }
+  
+    .tree-arrow{
+      width:18px;
+      height:18px;
+      display:inline-flex;
+      justify-content:center;
+      align-items:center;
+      font-size:13px;
+      cursor:pointer;
+      border-radius:6px;
+      color:var(--muted);
+    }
+    .tree-arrow.placeholder{ visibility:hidden; cursor:default; }
+    .tree-arrow:not(.placeholder):hover{
+      background:rgba(15,23,42,.06);
+      color:var(--text);
+    }
+  
+    .tree-name{
+      flex:1;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      font-weight:600;
+    }
+    /* little icons (purely visual) */
+    .tree-row[data-node-type="directory"] .tree-name::before{
+      content:"📁";
+      margin-right:6px;
+      opacity:.9;
+    }
+    .tree-row[data-node-type="task"] .tree-name::before{
+      content:"🧩";
+      margin-right:6px;
+      opacity:.9;
+    }
+  
+    /* ===== File groups & paths ===== */
+    .file-group{
+      border:1px solid var(--border-2);
+      border-radius:var(--radius);
+      margin-bottom:10px;
+      background:var(--panel);
+      box-shadow:var(--shadow-sm);
+      overflow:hidden;
+      transition:box-shadow .15s ease, transform .15s ease, border-color .15s ease;
+    }
+    .file-group:hover{
+      box-shadow:0 10px 24px rgba(0,0,0,.10);
+      border-color:rgba(37,99,235,.22);
+    }
+    .file-group-header{
+      padding:9px 10px;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      cursor:pointer;
+      border-bottom:1px solid var(--border-2);
+      background:linear-gradient(to bottom, #ffffff, #f8fafc);
+    }
+    .file-group-title{
+      flex:1;
+      font-weight:800;
+    }
+    .file-group-body{ padding:10px; background:var(--panel); }
+  
+    .file-path-row{
+      padding:9px 10px;
+      border-radius:12px;
+      margin-bottom:6px;
+      cursor:pointer;
+      border:1px solid transparent;
+      transition:background .15s ease, border-color .15s ease;
+    }
+    .file-path-row:hover{ background:rgba(15,23,42,.04); }
+    .file-path-row.active{
+      background:var(--accent-bg);
+      border-color:rgba(37,99,235,.25);
+    }
+  
+    .file-path-main{ display:block; }
+    .file-path-text{
+      display:block;
+      white-space:normal;
+      word-break:break-all;
+      font-weight:600;
+    }
+    .file-path-info{
+      display:block;
+      font-size:12px;
+      color:var(--muted);
+      margin-top:4px;
+      margin-left:0;
+    }
+  
+    .file-group.dragging{ opacity:0.6; }
+    .file-group.drag-over-top{ box-shadow:0 -2px 0 0 var(--accent); }
+    .file-group.drag-over-bottom{ box-shadow:0 2px 0 0 var(--accent); }
+  
+    /* ===== Field structure ===== */
+    .field-structure-empty{
+      color:var(--muted);
+      padding:6px 2px;
+    }
+  
+    .field-row{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      padding:7px 8px;
+      border-radius:10px;
+    }
+    .field-row:hover{ background:rgba(15,23,42,.04); }
+  
+    .field-toggle{
+      width:18px;
+      height:18px;
+      display:inline-flex;
+      justify-content:center;
+      align-items:center;
+      font-size:13px;
+      cursor:pointer;
+      border-radius:6px;
+      color:var(--muted);
+    }
+    .field-toggle:hover{ background:rgba(15,23,42,.06); color:var(--text); }
+    .field-toggle.empty{ visibility:hidden; cursor:default; }
+  
+    .field-name{
+      cursor:pointer;
+      margin-right:4px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      flex:1;
+      font-weight:650;
+    }
+    .field-type{
+      font-size:12px;
+      color:var(--muted);
+      margin-left:4px;
+      white-space:nowrap;
+      background:rgba(15,23,42,.04);
+      padding:2px 8px;
+      border-radius:999px;
+      border:1px solid rgba(15,23,42,.06);
+    }
+    .field-children{
+      margin-left:14px;
+      padding-left:10px;
+      border-left:1px dashed rgba(15,23,42,.18);
+    }
+  
+    /* ===== Operation boards ===== */
+    .sequence-board{
+      border:1px solid var(--border-2);
+      border-radius:var(--radius);
+      margin-bottom:12px;
+      background:var(--panel);
+      box-shadow:var(--shadow-sm);
+      overflow:hidden;
+      transition:box-shadow .15s ease, transform .15s ease, border-color .15s ease;
+    }
+    .sequence-board:hover{
+      box-shadow:0 12px 26px rgba(0,0,0,.10);
+      border-color:rgba(37,99,235,.22);
+    }
+  
+    .sequence-header{
+      padding:9px 10px;
+      display:flex;
+      align-items:flex-start;
+      gap:8px;
+      cursor:pointer;
+      border-bottom:1px solid var(--border-2);
+      background:linear-gradient(to bottom, #ffffff, #f8fafc);
+    }
+  
+    /* Keep your original title DOM; just modernize look */
+    .sequence-title{
+      flex:1;
+      font-weight:700;
+      padding:0;
+      border-radius:0;
+      background:transparent;
+    }
+    .sequence-title-main{
+      display:block;
+      font-weight:900;
+      letter-spacing:.2px;
+    }
+    .sequence-code-path{
+      display:block;
+      font-size:12px;
+      color:var(--muted);
+      margin-top:4px;
+      white-space:normal;
+      word-break:break-all;
+    }
+  
+    .sequence-meta{
+      padding:10px;
+      border-bottom:1px solid var(--border-2);
+      background:var(--panel);
+    }
+    .sequence-meta label{
+      display:block;
+      margin-bottom:8px;
+      color:var(--muted);
+      font-size:12px;
+    }
+  
+    input, textarea{
+      width:100%;
+      border:1px solid var(--border);
+      border-radius:10px;
+      padding:8px 10px;
+      background:#fff;
+      color:var(--text);
+      outline:none;
+      transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
+      font-family:inherit;
+    }
+    textarea{ font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; }
+  
+    input:focus, textarea:focus{
+      border-color:rgba(37,99,235,.55);
+      box-shadow:var(--focus);
+    }
+  
+    .sequence-meta button{
+      margin-top:6px;
+    }
+  
+    .sequence-nodes{
+      padding:10px;
+    }
+  
+    .sequence-node{
+      border-radius:14px;
+      padding:10px 10px;
+      margin-bottom:8px;
+      border:1px solid var(--border-2);
+      background:#fff;
+      box-shadow:var(--shadow-sm);
+      transition:box-shadow .15s ease, border-color .15s ease, transform .08s ease;
+    }
+    .sequence-node:hover{
+      border-color:rgba(37,99,235,.18);
+      box-shadow:0 10px 22px rgba(0,0,0,.10);
+    }
+  
+    .sequence-node-main{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      cursor:pointer;
+      gap:8px;
+    }
+    .sequence-node-title{ font-weight:900; }
+    .sequence-node-type{
+      font-size:12px;
+      color:var(--muted);
+      white-space:nowrap;
+      background:rgba(15,23,42,.04);
+      border:1px solid rgba(15,23,42,.06);
+      padding:2px 8px;
+      border-radius:999px;
+    }
+  
+    .sequence-node-block{ width:100%; margin-bottom:8px; }
+    .sequence-node-children{
+      margin-top:10px;
+      display:flex;
+      gap:10px;
+    }
+    .sequence-node-branch{
+      flex:1;
+      min-width:0;
+      padding-left:10px;
+      position:relative;
+    }
+    .sequence-node-branch::before{
+      content:"";
+      position:absolute;
+      left:0;
+      top:0;
+      bottom:0;
+      width:2px;
+      border-radius:999px;
+      background:rgba(15,23,42,.08);
+    }
+  
+    .sequence-node-edit{
+      margin-top:10px;
+      padding-top:10px;
+      border-top:1px dashed rgba(15,23,42,.18);
+      display:none;
+    }
+    .sequence-node-edit label{
+      display:block;
+      margin-bottom:8px;
+      color:var(--muted);
+      font-size:12px;
+    }
+    .sequence-node-edit textarea{ min-height:86px; resize:vertical; }
+  
+    .sequence-node.highlight{
+      box-shadow:0 0 0 2px rgba(37,99,235,.30) inset, var(--shadow-sm);
+    }
+  
+    /* Executed nodes */
+    .sequence-node.executed{
+      background:var(--ok-bg);
+      border-color:var(--ok-border);
+    }
+  
+    /* Result path line */
+    .sequence-node-result-path{
+      font-size:12px;
+      color:var(--muted);
+      margin-top:6px;
+      white-space:normal;
+      word-break:break-all;
+    }
+  
+    /* Frozen */
+    .sequence-node.frozen{
+      opacity:0.65;
+      filter:grayscale(100%);
+      background:#f8fafc;
+      border-color:var(--border);
+    }
+    .sequence-node.frozen .sequence-node-title::after{
+      content:" (已冻结)";
+      font-size:12px;
+      color:var(--muted);
+      margin-left:6px;
+      font-weight:700;
+    }
+  
+    /* Board dragging indicators */
+    .sequence-board.dragging{ opacity:0.6; }
+    .sequence-board.drag-over-top{ box-shadow:0 -2px 0 0 var(--accent); }
+    .sequence-board.drag-over-bottom{ box-shadow:0 2px 0 0 var(--accent); }
+  
+    /* ===== Context menu ===== */
+    #context-menu{
+      position:fixed;
+      z-index:9999;
+      min-width:160px;
+      background:#fff;
+      border-radius:14px;
+      box-shadow:0 18px 50px rgba(0,0,0,.22);
+      border:1px solid var(--border-2);
+      display:none;
+      font-size:13px;
+      padding:6px;
+    }
+    .context-menu-item{
+      padding:9px 10px;
+      cursor:pointer;
+      white-space:nowrap;
+      border-radius:10px;
+      color:var(--text);
+      transition:background .12s ease;
+    }
+    .context-menu-item:hover{
+      background:var(--accent-bg);
+    }
+    .context-menu-divider{
+      height:1px;
+      background:rgba(15,23,42,.08);
+      margin:6px 4px;
+    }
+  
+    /* Hint */
+    .hint{
+      font-size:12px;
+      color:var(--muted);
+      margin-top:8px;
+      padding:10px 10px;
+      border:1px dashed rgba(15,23,42,.18);
+      border-radius:12px;
+      background:rgba(255,255,255,.65);
+    }
+  
+    @media (prefers-reduced-motion: reduce){
+      *{ transition:none !important; }
+    }
+  </style>  
+</head>
+<body>
+<div id="app">
+  <div id="top-bar">
+    <div class="left">JSONL 任务处理工具</div>
+    <div class="right">
+      <button id="btn-task-vars">任务变量</button>
+      <button id="btn-undo">撤销</button>
+      <button id="btn-redo">重做</button>
+      <button id="btn-save">手动保存</button>
+      <button id="btn-reload">重新加载</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <!-- 第一列：目录及任务管理 -->
+    <div class="column" id="col-1">
+      <div class="column-header">目录 &amp; 任务管理</div>
+      <div class="column-content" id="task-tree"></div>
+    </div>
+    <div class="resize-handle" data-handle="1"></div>
+
+    <!-- 第二列：任务输入（文件组） -->
+    <div class="column" id="col-2">
+      <div class="column-header">任务输入（文件组）</div>
+      <div class="column-content" id="file-groups"></div>
+    </div>
+    <div class="resize-handle" data-handle="2"></div>
+
+    <!-- 第三列：数据结构展示 -->
+    <div class="column" id="col-3">
+      <div class="column-header">数据结构展示</div>
+      <div class="column-content" id="field-structure"></div>
+    </div>
+    <div class="resize-handle" data-handle="3"></div>
+
+    <!-- 第四列：操作区 -->
+    <div class="column" id="col-4">
+      <div class="column-header">操作序列画板</div>
+      <div class="column-content" id="operation-area"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 通用右键菜单 -->
+<!-- 任务变量编辑弹窗：textarea 可拖动改大小 -->
+<div id="taskvars-modal" style="display:none; position:fixed; inset:0; z-index:10000;">
+  <div id="taskvars-backdrop" style="position:absolute; inset:0; background:rgba(0,0,0,.35);"></div>
+
+  <div style="
+      position:relative;
+      width:min(900px,92vw);
+      max-height:90vh;
+      margin:auto;
+      background:#fff;
+      border:1px solid rgba(15,23,42,.12);
+      border-radius:12px;
+      box-shadow:0 30px 80px rgba(0,0,0,.25);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+    ">
+    <div style="padding:10px 12px; border-bottom:1px solid rgba(15,23,42,.08); font-weight:800; display:flex; justify-content:space-between; align-items:center;">
+      <div>编辑任务变量（JSON 对象）</div>
+      <button id="taskvars-close">关闭</button>
+    </div>
+
+    <div style="padding:12px; overflow:auto;">
+      <textarea id="taskvars-textarea"
+        spellcheck="false"
+        style="
+          width:100%;
+          min-height:260px;
+          resize:both;       /* ✅ 可拖动任意方向 */
+          overflow:auto;
+          box-sizing:border-box;
+          font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation Mono','Courier New',monospace;
+          font-size:13px;
+          line-height:1.35;
+          border:1px solid rgba(15,23,42,.12);
+          border-radius:10px;
+          padding:10px;
+        "></textarea>
+
+      <div style="margin-top:8px; color:#64748b; font-size:12px;">
+        可拖动右下角改变大小。保存时会 JSON.parse 校验（失败则不保存）。
+      </div>
+    </div>
+
+    <div style="padding:10px 12px; border-top:1px solid rgba(15,23,42,.08); display:flex; justify-content:flex-end; gap:8px;">
+      <button id="taskvars-cancel">取消</button>
+      <button id="taskvars-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="context-menu"></div>
+
+<datalist id="function-names">
+  <option value="delete_fields"></option>
+  <option value="rename_fields"></option>
+  <option value="remove_duplicates_interior"></option>
+  <option value="remove_duplicates_exterior"></option>
+  <option value="has_key_path"></option>
+</datalist>
+
+<script>
+  // ===========
+  // 全局状态
+  // ===========
+
+  let appState = {
+    directories: {},
+    tasks: {},
+    file_groups: {},
+    operation_sequences: {}
+  };
+
+  let uiState = {
+    currentTaskId: null,
+    selectedFilePathId: null,
+    fieldStructure: null
+  };
+
+  const colWidthsKey = "jsonl_tool_column_widths_v1";
+
+    // ===========
+  // 撤销 / 重做 相关
+  // ===========
+
+  const HISTORY_LIMIT = 50; // 最多保留 50 步
+  let historyStack = [];    // 每一项是一个 appState 快照
+  let historyIndex = -1;    // 指向当前状态在 historyStack 中的索引
+  let isRestoringHistory = false; // 防止撤销/重做时再次记历史
+  
+  let currentVersion = 0;     // 显式声明，避免 ReferenceError
+  let stateLoaded = false;    // 没加载完不允许保存
+  let saveInFlight = false;   // 防止并发保存
+  let savePending = false;    // inFlight 时又来一次保存，标记补一刀
+
+
+
+  function cloneState(obj) {
+    return JSON.parse(JSON.stringify(obj));
+  }
+
+  // 初始化历史栈：把当前 appState 作为“第 0 步”
+  function initHistoryWithCurrentState() {
+    historyStack = [cloneState(appState)];
+    historyIndex = 0;
+  }
+
+  function canUndo() {
+    return historyIndex > 0;
+  }
+
+  function canRedo() {
+    return historyIndex >= 0 && historyIndex < historyStack.length - 1;
+  }
+
+  // 在每次真正修改完 appState 后调用（由 scheduleSaveState 自动触发）
+  function recordHistorySnapshot() {
+    if (isRestoringHistory) return;
+
+    // 如果之前执行过 undo，historyIndex 可能不在末尾，需要截断“未来分支”
+    if (historyIndex < historyStack.length - 1) {
+      historyStack = historyStack.slice(0, historyIndex + 1);
+    }
+
+    historyStack.push(cloneState(appState));
+    if (historyStack.length > HISTORY_LIMIT) {
+      // 超出上限时丢掉最早的一步，并把 historyIndex 调整到最后
+      historyStack.shift();
+      historyIndex = historyStack.length - 1;
+    } else {
+      historyIndex++;
+    }
+  }
+
+  function restoreFromHistory(targetIndex) {
+    if (targetIndex < 0 || targetIndex >= historyStack.length) return;
+    const snapshot = historyStack[targetIndex];
+
+    isRestoringHistory = true;
+    appState = cloneState(snapshot);
+    isRestoringHistory = false;
+    historyIndex = targetIndex;
+
+    // 修正 UI 状态（防止当前任务被删掉）
+    if (uiState.currentTaskId && !appState.tasks[uiState.currentTaskId]) {
+      const firstTask = Object.values(appState.tasks || {})[0];
+      uiState.currentTaskId = firstTask ? firstTask.id : null;
+    }
+    uiState.selectedFilePathId = null;
+    uiState.fieldStructure = null;
+
+    renderAll();
+    // 撤销/重做之后，仍然要把状态同步回后端，但不再记录新历史
+    scheduleSaveState(true);
+  }
+
+  function undoLastOperation() {
+    if (!canUndo()) {
+      showMessage("没有可以撤销的操作。");
+      return;
+    }
+    restoreFromHistory(historyIndex - 1);
+  }
+
+  function redoLastOperation() {
+    if (!canRedo()) {
+      showMessage("没有可以重做的操作。");
+      return;
+    }
+    restoreFromHistory(historyIndex + 1);
+  }
+
+
+  // ===========
+  // 工具函数
+  // ===========
+
+  function rewriteRefsInParamsJson(paramsJson, rewriteFn) {
+    if (typeof paramsJson !== "string") return paramsJson;
+
+    let obj;
+    try {
+      obj = JSON.parse(paramsJson);
+    } catch {
+      // 你允许 params_json 非法时也保存字符串：那就不要动它
+      return paramsJson;
+    }
+
+    function walk(x) {
+      if (!x || typeof x !== "object") return x;
+      if (Array.isArray(x)) return x.map(walk);
+
+      // 命中 {$ref: {...}}
+      if (x.$ref && typeof x.$ref === "object" && !Array.isArray(x.$ref)) {
+        const newRef = rewriteFn(x.$ref);
+        if (newRef) {
+          return { ...x, $ref: newRef };
+        }
+      }
+
+      // 普通 object 深度遍历
+      const out = {};
+      for (const k in x) out[k] = walk(x[k]);
+      return out;
+    }
+
+    const rewritten = walk(obj);
+    return JSON.stringify(rewritten, null, 2);
+  }
+
+  function insertTextAtCursor(textarea, text) {
+    textarea.focus();
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? textarea.value.length;
+    const before = textarea.value.slice(0, start);
+    const after = textarea.value.slice(end);
+    textarea.value = before + text + after;
+    const newPos = start + text.length;
+    textarea.selectionStart = textarea.selectionEnd = newPos;
+    // 触发 input 事件，让你现有的“实时保存”逻辑生效
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function promptPickFromList(title, items, renderLine) {
+    if (!items.length) {
+      showMessage("没有可选项。");
+      return null;
+    }
+    const lines = items.map((it, i) => `${i + 1}. ${renderLine(it)}`);
+    const input = prompt(
+      `${title}\n\n` + lines.join("\n") + `\n\n请输入序号（1-${items.length}）：`,
+      "1"
+    );
+    if (!input) return null;
+    const idx = parseInt(input, 10);
+    if (Number.isNaN(idx) || idx < 1 || idx > items.length) {
+      showMessage("序号不合法。");
+      return null;
+    }
+    return items[idx - 1];
+  }
+
+  function listAllFileGroups() {
+    const out = [];
+    for (const gid in (appState.file_groups || {})) {
+      const g = appState.file_groups[gid];
+      const t = appState.tasks?.[g.task_id];
+      out.push({
+        id: g.id,
+        name: g.name,
+        task_id: g.task_id,
+        task_name: t ? t.name : "(未知任务)"
+      });
+    }
+    // 稍微排序一下，方便找
+    out.sort((a, b) => (a.task_name + a.name).localeCompare(b.task_name + b.name, "zh-CN"));
+    return out;
+  }
+
+  function listAllFilePaths() {
+    const out = [];
+    for (const gid in (appState.file_groups || {})) {
+      const g = appState.file_groups[gid];
+      const t = appState.tasks?.[g.task_id];
+      (g.file_paths || []).forEach(fp => {
+        out.push({
+          id: fp.id,
+          path: fp.path,
+          group_id: g.id,
+          group_name: g.name,
+          task_id: g.task_id,
+          task_name: t ? t.name : "(未知任务)"
+        });
+      });
+    }
+    return out;
+  }
+
+  function listAllNodeOutputs() {
+    const out = [];
+    for (const sid in (appState.operation_sequences || {})) {
+      const seq = appState.operation_sequences[sid];
+      const t = appState.tasks?.[seq.task_id];
+      const g = appState.file_groups?.[seq.file_group_id];
+      (seq.nodes || []).forEach(n => {
+        if (n.node_type !== "op") return;
+        const p = (n.result_save_path || "").trim();
+        if (!p) return; // 没有输出路径就不列出
+        out.push({
+          sequence_id: seq.id,
+          sequence_name: seq.name,
+          task_id: seq.task_id,
+          task_name: t ? t.name : "(未知任务)",
+          file_group_name: g ? g.name : "(未知文件组)",
+          node_id: n.id,
+          node_name: n.name || "(未命名节点)",
+          result_save_path: p
+        });
+      });
+    }
+    // 更好找：按 task / seq / node 排序
+    out.sort((a, b) => (a.task_name + a.sequence_name + a.node_name).localeCompare(b.task_name + b.sequence_name + b.node_name, "zh-CN"));
+    return out;
+  }
+
+  function buildRefSnippet(refObj) {
+    // 统一输出带缩进的片段，插入到 params 时更可读
+    return JSON.stringify({ "$ref": refObj }, null, 2);
+  }
+
+  function createId() {
+    return (
+      Date.now().toString(36) +
+      Math.random().toString(36).substring(2, 8)
+    );
+  }
+
+  function showMessage(msg) {
+    alert(msg);
+  }
+
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        console.log("Copied:", text);
+      }).catch(() => {
+        showMessage("复制失败，请手动复制。");
+      });
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand("copy");
+      } catch (e) {
+        console.error(e);
+      }
+      document.body.removeChild(textarea);
+    }
+  }
+
+  function saveWidthsToLocal(widths) {
+    localStorage.setItem(colWidthsKey, JSON.stringify(widths));
+  }
+
+  function loadWidthsFromLocal() {
+    const raw = localStorage.getItem(colWidthsKey);
+    if (!raw) return null;
+    try {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length === 4) return arr;
+    } catch (e) {}
+    return null;
+  }
+
+  function applyColumnWidths(widths) {
+    document.documentElement.style.setProperty("--col1", widths[0] + "%");
+    document.documentElement.style.setProperty("--col2", widths[1] + "%");
+    document.documentElement.style.setProperty("--col3", widths[2] + "%");
+    document.documentElement.style.setProperty("--col4", widths[3] + "%");
+  }
+
+  function getCurrentColumnWidths() {
+    const cs = getComputedStyle(document.documentElement);
+    function parseVar(name) {
+      const v = cs.getPropertyValue(name) || "25%";
+      const num = parseFloat(v);
+      return isNaN(num) ? 25 : num;
+    }
+    return [
+      parseVar("--col1"),
+      parseVar("--col2"),
+      parseVar("--col3"),
+      parseVar("--col4"),
+    ];
+  }
+
+  function generateUniqueName(base, existingNames) {
+    if (!existingNames.includes(base)) return base;
+    let i = 1;
+    while (true) {
+      const candidate = base + " " + i;
+      if (!existingNames.includes(candidate)) return candidate;
+      i++;
+    }
+  }
+
+  // ========= 任务级变量相关工具 =========
+
+  function getTaskVars(taskId) {
+    if (!taskId) return {};
+    const t = appState.tasks[taskId];
+    if (!t || !t.vars || typeof t.vars !== "object") return {};
+    return t.vars;
+  }
+
+  // 支持在字符串中写 {{key}} 占位符，用当前任务的 vars 替换
+  function resolveTaskVarsInString(str, taskId) {
+    if (!str || typeof str !== "string") return str;
+    const vars = getTaskVars(taskId);
+    return str.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+      if (Object.prototype.hasOwnProperty.call(vars, key)) {
+        return vars[key];
+      }
+      return match; // 没有对应变量就原样返回
+    });
+  }
+
+  function getCurrentTask() {
+    if (!uiState.currentTaskId) return null;
+    return appState.tasks[uiState.currentTaskId] || null;
+  }
+
+  function findFilePathById(filePathId) {
+    for (const groupId in appState.file_groups) {
+      const group = appState.file_groups[groupId];
+      const fp = (group.file_paths || []).find(p => p.id === filePathId);
+      if (fp) return { group, filePath: fp };
+    }
+    return null;
+  }
+
+  function sequenceNodesForTask(taskId) {
+    return Object.values(appState.operation_sequences).filter(
+      seq => seq.task_id === taskId
+    );
+  }
+
+  function groupsForTask(taskId) {
+    return Object.values(appState.file_groups || {}).filter(
+      g => g.task_id === taskId
+    );
+  }
+
+  function getSeqAndNode(seqId, nodeId) {
+    const seq = appState.operation_sequences[seqId];
+    if (!seq || !Array.isArray(seq.nodes)) return { seq: null, node: null };
+    const node = seq.nodes.find(n => n.id === nodeId) || null;
+    return { seq, node };
+  }
+
+  // 把 targetId 及其所有后代的 executed 设为 val
+  function setExecutedForNodeAndDescendants(seq, targetId, val) {
+    if (!seq || !Array.isArray(seq.nodes)) return;
+    const nodes = seq.nodes;
+
+    function dfs(id) {
+      const cur = nodes.find(n => n.id === id);
+      if (cur) cur.executed = val;
+      nodes.filter(n => n.parent_id === id).forEach(ch => dfs(ch.id));
+    }
+    dfs(targetId);
+  }
+
+  // 把 targetId 的所有祖先 executed 设为 true
+  function setExecutedTrueForAncestors(seq, targetId) {
+    if (!seq || !Array.isArray(seq.nodes)) return;
+    const nodes = seq.nodes;
+
+    let cur = nodes.find(n => n.id === targetId);
+    while (cur && cur.parent_id) {
+      const p = nodes.find(n => n.id === cur.parent_id);
+      if (!p) break;
+      p.executed = true;
+      cur = p;
+    }
+  }
+
+  // 对外：设置 executed，并做你要的传播规则
+  function setNodeExecutedWithPropagation(seqId, nodeId, newVal) {
+    const { seq, node } = getSeqAndNode(seqId, nodeId);
+    if (!seq || !node) return;
+
+    if (newVal === false) {
+      // 规则：false => 自己+子树全 false
+      setExecutedForNodeAndDescendants(seq, nodeId, false);
+    } else {
+      // 规则：true => 自己 true + 父链全 true
+      node.executed = true;
+      setExecutedTrueForAncestors(seq, nodeId);
+    }
+
+    scheduleSaveState();      // 用户操作：进撤销栈
+  }
+
+  // ========== 文件组顺序管理 ==========
+
+  function ensureGroupOrderForTask(taskId) {
+    const groups = groupsForTask(taskId);
+    if (!groups.length) return;
+    let needUpdate = false;
+
+    groups.sort((a, b) => {
+      const ai = (typeof a.display_index === "number") ? a.display_index : Infinity;
+      const bi = (typeof b.display_index === "number") ? b.display_index : Infinity;
+      if (ai !== bi) return ai - bi;
+      return (a.name || "").localeCompare(b.name || "", "zh-CN");
+    });
+
+    groups.forEach((g, idx) => {
+      if (typeof g.display_index !== "number" || g.display_index !== idx) {
+        g.display_index = idx;
+        needUpdate = true;
+      }
+    });
+
+    if (needUpdate) {
+      scheduleSaveState();
+    }
+  }
+
+  function reorderGroupsWithinTask(taskId, fromGroupId, toGroupId, insertBefore) {
+    let groups = groupsForTask(taskId)
+      .slice()
+      .sort((a, b) => {
+        const ai = (typeof a.display_index === "number") ? a.display_index : 0;
+        const bi = (typeof b.display_index === "number") ? b.display_index : 0;
+        return ai - bi;
+      });
+
+    const fromIndex = groups.findIndex(g => g.id === fromGroupId);
+    const toIndex   = groups.findIndex(g => g.id === toGroupId);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const [moved] = groups.splice(fromIndex, 1);
+    let targetIndex = insertBefore ? toIndex : toIndex + (fromIndex < toIndex ? 0 : 1);
+    if (targetIndex < 0) targetIndex = 0;
+    if (targetIndex > groups.length) targetIndex = groups.length;
+    groups.splice(targetIndex, 0, moved);
+
+    groups.forEach((g, idx) => {
+      const obj = appState.file_groups[g.id];
+      if (obj) obj.display_index = idx;
+    });
+
+    scheduleSaveState();
+  }
+
+  // ========== 操作序列顺序管理 ==========
+
+  function ensureSequenceOrderForTask(taskId) {
+    const seqs = sequenceNodesForTask(taskId);
+    if (!seqs.length) return;
+    let needUpdate = false;
+
+    seqs.sort((a, b) => {
+      const ai = (typeof a.display_index === "number") ? a.display_index : Infinity;
+      const bi = (typeof b.display_index === "number") ? b.display_index : Infinity;
+      if (ai !== bi) return ai - bi;
+      return (a.name || "").localeCompare(b.name || "", "zh-CN");
+    });
+
+    seqs.forEach((seq, idx) => {
+      if (typeof seq.display_index !== "number" || seq.display_index !== idx) {
+        seq.display_index = idx;
+        needUpdate = true;
+      }
+    });
+
+    if (needUpdate) {
+      scheduleSaveState();
+    }
+  }
+
+  function reorderSequencesWithinTask(taskId, fromSeqId, toSeqId, insertBefore) {
+    const seqs = sequenceNodesForTask(taskId)
+      .slice()
+      .sort((a, b) => {
+        const ai = (typeof a.display_index === "number") ? a.display_index : 0;
+        const bi = (typeof b.display_index === "number") ? b.display_index : 0;
+        return ai - bi;
+      });
+
+    const fromIndex = seqs.findIndex(s => s.id === fromSeqId);
+    const toIndex   = seqs.findIndex(s => s.id === toSeqId);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const [moved] = seqs.splice(fromIndex, 1);
+    let targetIndex = insertBefore ? toIndex : toIndex + (fromIndex < toIndex ? 0 : 1);
+    if (targetIndex < 0) targetIndex = 0;
+    if (targetIndex > seqs.length) targetIndex = seqs.length;
+    seqs.splice(targetIndex, 0, moved);
+
+    seqs.forEach((s, idx) => {
+      const obj = appState.operation_sequences[s.id];
+      if (obj) obj.display_index = idx;
+    });
+
+    scheduleSaveState();
+  }
+
+  // ===========
+  // 远程交互
+  // ===========
+
+  async function loadStateFromServer() {
+    try {
+      const res = await fetch("/api/state");
+      if (!res.ok) throw new Error("加载状态失败");
+      const data = await res.json();
+      appState = data || { directories: {}, tasks: {}, file_groups: {}, operation_sequences: {} };
+      
+      // ✅ version 兜底为数字
+      currentVersion = Number(appState.version ?? data?.version ?? 0) || 0;
+      stateLoaded = true;
+      // 数据结构兜底
+      if (!appState.directories) appState.directories = {};
+      if (!appState.tasks) appState.tasks = {};
+      if (!appState.file_groups) appState.file_groups = {};
+      if (!appState.operation_sequences) appState.operation_sequences = {};
+
+      // 初始化根目录
+      if (Object.keys(appState.directories).length === 0) {
+        const rootId = "root";
+        appState.directories = {
+          [rootId]: { id: rootId, name: "根目录", parent_id: null, collapsed: false }
+        };
+      }
+
+      // 给所有任务兜底 vars 字段
+      for (const taskId in appState.tasks) {
+        const t = appState.tasks[taskId];
+        if (!t.vars || typeof t.vars !== "object") {
+          t.vars = {};
+        }
+      }
+
+      // 节点字段兜底：result_save_path + executed + parent_id
+      for (const seqId in appState.operation_sequences) {
+        const seq = appState.operation_sequences[seqId];
+        if (!Array.isArray(seq.nodes)) {
+          seq.nodes = [];
+        }
+        seq.nodes.forEach((n, index) => {
+          if (typeof n.executed !== "boolean") {
+            n.executed = false;
+          }
+          if (n.node_type === "op" && typeof n.result_save_path !== "string") {
+            n.result_save_path = "";
+          }
+          if (n.node_type === "root" && typeof n.result_save_path === "undefined") {
+            n.result_save_path = null; // root 没有路径，仅保持字段存在
+          }
+          // 新增：老数据自动补 parent_id，默认成线性链
+          if (typeof n.parent_id === "undefined") {
+            n.parent_id = index === 0 ? null : (seq.nodes[index - 1] ? seq.nodes[index - 1].id : null);
+          }
+        });
+      }
+
+      if (uiState.currentTaskId && !appState.tasks[uiState.currentTaskId]) {
+        uiState.currentTaskId = null;
+      }
+
+      if (!uiState.currentTaskId) {
+        const firstTask = Object.values(appState.tasks)[0];
+        if (firstTask) uiState.currentTaskId = firstTask.id;
+      }
+      
+      normalizeTreeDisplayIndex();
+      renderAll();
+      initHistoryWithCurrentState(); // 把“刚从后端加载的状态”作为历史第 0 步
+    } catch (e) {
+      console.error(e);
+      showMessage("从后端加载状态失败，请检查服务是否运行。");
+    }
+  }
+
+  let saveTimer = null;
+  /**
+   * scheduleSaveState(skipHistory = false)
+   * - 默认会先记录一条历史快照，再在 500ms 后保存到后端
+   * - 撤销/重做、执行状态刷新等场景可以传 true，表示只保存，不记历史
+   */
+  function scheduleSaveState(skipHistory) {
+    if (!stateLoaded) {
+      // ✅ 没加载完时，不要触发保存（否则很容易 version 未初始化/旧状态覆盖新状态）
+      return;
+    }
+    if (!skipHistory) {
+      recordHistorySnapshot();
+    }
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveStateToServer, 500);
+  }
+
+  async function saveStateToServer() {
+    if (!stateLoaded) return;
+
+    // ✅ 串行化：如果正在保存，就标记 pending，等本次结束后再补一次
+    if (saveInFlight) {
+      savePending = true;
+      return;
+    }
+    saveInFlight = true;
+    try {
+      appState.version = currentVersion;
+      const res = await fetch("/api/state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(appState),
+      });
+      if (!res.ok) {
+        // ✅ 重点：把版本冲突单独拎出来提示（按你后端实现，可能是 409/412）
+        if (res.status === 409 || res.status === 412) {
+          showMessage("保存失败：版本冲突（可能另一个页面/实例已保存）。请点击“重新加载”后再试。");
+          savePending = false; // 避免补刀继续撞
+        } else {
+          showMessage("保存状态到后端失败，请检查网络或后端日志。HTTP=" + res.status);
+        }
+        return; // ✅ 不 throw，避免 catch 再弹一次
+      }
+      let resp = null;
+      try { resp = await res.json(); } catch (_) {}
+      if (resp) {
+        const newV = Number(resp.version ?? resp?.state?.version);
+        if (!Number.isNaN(newV) && newV >= 0) currentVersion = newV;
+
+        // 可选：如果后端回传的是“最终写入的 state”，你也可以用它覆盖本地，避免后端做了规范化导致差异
+        // if (resp.directories && resp.tasks) appState = resp;
+      } else {
+        // 兜底：如果后端不回 JSON，但确实每次 save 都会 version+1，那至少前端自己 +1
+        // ⚠️ 只有你确定后端是这种策略才打开，否则别用
+        // currentVersion += 1;
+      }
+      console.log("状态已保存 version=", currentVersion);
+    } catch (e) {
+      console.error(e);
+      showMessage("保存状态到后端失败，请检查网络或后端日志。");
+    } finally {
+      saveInFlight = false;
+      if (savePending) {
+        savePending = false;
+        // ✅ 结束后如果期间又改动过，再保存一次（不会并发）
+        saveStateToServer();
+      }
+    }
+  }
+
+  async function requestFileStructure(path) {
+    const res = await fetch("/api/file_structure", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      showMessage("解析字段结构失败：" + (data.error || "未知错误"));
+      return null;
+    }
+    return data.structure;
+  }
+
+  async function requestFileInfo(path) {
+    const res = await fetch("/api/file_info", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      showMessage("获取文件路径信息失败：" + (data.error || "未知错误"));
+      return null;
+    }
+    return { file_count: data.file_count, total_lines: data.total_lines };
+  }
+
+  async function requestHeadTail(path) {
+    const res = await fetch("/api/file_head_tail", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      showMessage("获取首尾行失败：" + (data.error || "未知错误"));
+      return null;
+    }
+    return { first: data.first_line, last: data.last_line };
+  }
+
+  async function requestGenerateCode(taskId, seqId) {
+    const res = await fetch("/api/generate_code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId, sequence_id: seqId }),
+    });
+    const data = await res.json();
+    // showMessage(data.message || "generate_code 调用完成。");
+  }
+
+  async function requestRunSequence(taskId, seqId) {
+    const res = await fetch("/api/run_sequence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId, sequence_id: seqId }),
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      const seq = appState.operation_sequences[seqId];
+      if (seq && Array.isArray(seq.nodes)) {
+        // 简单策略：全标 true（你也可以排除 frozen）
+        seq.nodes.forEach(n => { n.executed = true; });
+        scheduleSaveState(true); // 执行结果同步：一般不进撤销栈
+      }
+    }
+
+    showMessage(data.message || "run_sequence 调用完成。");
+    renderOperationArea();
+    applyExecutionStyles();
+  }
+
+  function applyExecutionStyles() {
+    const nodeEls = document.querySelectorAll(".sequence-node");
+    nodeEls.forEach(el => {
+      const seqId = el.dataset.sequenceId;
+      const nodeId = el.dataset.nodeId;
+      const seq = appState.operation_sequences[seqId];
+      if (!seq || !Array.isArray(seq.nodes)) return;
+      const node = seq.nodes.find(n => n.id === nodeId);
+      if (!node) return;
+
+      if (node.executed) {
+        el.classList.add("executed");
+      } else {
+        el.classList.remove("executed");
+      }
+    });
+  }
+
+  // ===========
+  // 渲染：任务树
+  // ===========
+  // ========== 目录 & 任务顺序管理（任务树） ==========
+
+  let draggingTreeItem = null;
+
+  // 取某个 parentId 下的“目录+任务”同级列表（共用 display_index）
+  function getTreeChildrenForParent(parentId) {
+    const out = [];
+    const dirs = appState.directories || {};
+    const tasks = appState.tasks || {};
+
+    for (const dirId in dirs) {
+      if (dirId === "root") continue;
+      const d = dirs[dirId];
+      const pid = d.parent_id || "root";
+      if (pid === parentId) out.push({ type: "dir", obj: d });
+    }
+    for (const taskId in tasks) {
+      const t = tasks[taskId];
+      const pid = t.directory_id || "root";
+      if (pid === parentId) out.push({ type: "task", obj: t });
+    }
+    return out;
+  }
+
+  function sortTreeChildren(arr) {
+    arr.sort((a, b) => {
+      const ai = (typeof a.obj.display_index === "number") ? a.obj.display_index : Infinity;
+      const bi = (typeof b.obj.display_index === "number") ? b.obj.display_index : Infinity;
+      if (ai !== bi) return ai - bi;
+
+      // 兜底：同 index 时，目录优先，然后按名称
+      if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+      return (a.obj.name || "").localeCompare((b.obj.name || ""), "zh-CN");
+    });
+    return arr;
+  }
+
+  // 统一给所有 parent 的子项补齐 display_index（老数据兼容）
+  function normalizeTreeDisplayIndex() {
+    const parentIds = new Set(["root"]);
+
+    // 收集可能出现的 parentId
+    for (const dirId in (appState.directories || {})) {
+      if (dirId === "root") continue;
+      const d = appState.directories[dirId];
+      parentIds.add(d.parent_id || "root");
+      parentIds.add(dirId);
+    }
+    for (const taskId in (appState.tasks || {})) {
+      const t = appState.tasks[taskId];
+      parentIds.add(t.directory_id || "root");
+    }
+
+    let changed = false;
+
+    parentIds.forEach(pid => {
+      const children = getTreeChildrenForParent(pid);
+      if (!children.length) return;
+
+      sortTreeChildren(children);
+      children.forEach((it, idx) => {
+        if (typeof it.obj.display_index !== "number" || it.obj.display_index !== idx) {
+          it.obj.display_index = idx;
+          changed = true;
+        }
+      });
+    });
+
+    if (changed) {
+      scheduleSaveState(true); // 只同步，不记历史（避免“加载就多一步撤销”）
+    }
+  }
+
+  function getMaxTreeDisplayIndex(parentId) {
+    const children = getTreeChildrenForParent(parentId);
+    let max = -1;
+    children.forEach(it => {
+      const v = (typeof it.obj.display_index === "number") ? it.obj.display_index : -1;
+      if (v > max) max = v;
+    });
+    return max;
+  }
+
+  function reorderTreeItemsWithinParent(parentId, from, to, insertBefore) {
+    const siblings = getTreeChildrenForParent(parentId);
+    if (siblings.length <= 1) return;
+
+    sortTreeChildren(siblings);
+
+    const fromIndex = siblings.findIndex(x => x.type === from.type && x.obj.id === from.id);
+    const toIndex = siblings.findIndex(x => x.type === to.type && x.obj.id === to.id);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const [moved] = siblings.splice(fromIndex, 1);
+    let targetIndex = insertBefore ? toIndex : toIndex + (fromIndex < toIndex ? 0 : 1);
+    if (targetIndex < 0) targetIndex = 0;
+    if (targetIndex > siblings.length) targetIndex = siblings.length;
+    siblings.splice(targetIndex, 0, moved);
+
+    siblings.forEach((it, idx) => {
+      it.obj.display_index = idx;
+    });
+
+    scheduleSaveState(); // 这属于用户操作：要进入撤销栈
+  }
+
+  function renderTaskTree() {
+    const container = document.getElementById("task-tree");
+    container.innerHTML = "";
+
+    const directories = appState.directories || {};
+    const tasks = appState.tasks || {};
+
+    const childrenMap = {};
+    function addChild(parentId, item) {
+      if (!childrenMap[parentId]) childrenMap[parentId] = [];
+      childrenMap[parentId].push(item);
+    }
+
+    for (const dirId in directories) {
+      const dir = directories[dirId];
+      const pid = dir.parent_id || "root";
+      if (dirId === "root") continue;
+      addChild(pid, { type: "dir", obj: dir });
+    }
+
+    for (const taskId in tasks) {
+      const task = tasks[taskId];
+      const pid = task.directory_id || "root";
+      addChild(pid, { type: "task", obj: task });
+    }
+
+    function renderChildren(parentId, level, parentEl) {
+      const children = childrenMap[parentId] || [];
+      // children.sort((a, b) => {
+      //   if (a.type === b.type) {
+      //     return a.obj.name.localeCompare(b.obj.name, "zh-CN");
+      //   }
+      //   return a.type === "dir" ? -1 : 1;
+      // });
+      sortTreeChildren(children);
+
+      children.forEach(item => {
+        if (item.type === "dir") {
+          const dir = item.obj;
+          const row = document.createElement("div");
+          row.className = "tree-row";
+          row.style.paddingLeft = (4 + level * 16) + "px";
+          row.dataset.nodeType = "directory";
+          row.dataset.id = dir.id;
+
+          row.setAttribute("draggable", "true");
+          row.dataset.parentId = parentId;
+
+          row.addEventListener("dragstart", (e) => {
+            draggingTreeItem = { type: "dir", id: dir.id, parentId };
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", dir.id);
+            row.classList.add("dragging");
+          });
+
+          row.addEventListener("dragend", () => {
+            draggingTreeItem = null;
+            document
+              .querySelectorAll(".tree-row.drag-over-top, .tree-row.drag-over-bottom, .tree-row.dragging")
+              .forEach(el => el.classList.remove("drag-over-top", "drag-over-bottom", "dragging"));
+          });
+
+          row.addEventListener("dragover", (e) => {
+            if (!draggingTreeItem) return;
+            if (draggingTreeItem.parentId !== parentId) return; // 只允许同级排序
+            if (draggingTreeItem.type === "dir" && draggingTreeItem.id === dir.id) return;
+
+            e.preventDefault();
+            const rect = row.getBoundingClientRect();
+            const isTopHalf = (e.clientY - rect.top) < rect.height / 2;
+            row.classList.toggle("drag-over-top", isTopHalf);
+            row.classList.toggle("drag-over-bottom", !isTopHalf);
+          });
+
+          row.addEventListener("dragleave", () => {
+            row.classList.remove("drag-over-top", "drag-over-bottom");
+          });
+
+          row.addEventListener("drop", (e) => {
+            if (!draggingTreeItem) return;
+            if (draggingTreeItem.parentId !== parentId) return;
+
+            e.preventDefault();
+            const rect = row.getBoundingClientRect();
+            const isTopHalf = (e.clientY - rect.top) < rect.height / 2;
+
+            reorderTreeItemsWithinParent(
+              parentId,
+              draggingTreeItem,
+              { type: "dir", id: dir.id },
+              isTopHalf
+            );
+
+            draggingTreeItem = null;
+            renderTaskTree();
+          });
+
+          const arrow = document.createElement("span");
+          arrow.className = "tree-arrow";
+          arrow.textContent = dir.collapsed ? "▶" : "▼";
+          arrow.addEventListener("click", e => {
+            e.stopPropagation();
+            dir.collapsed = !dir.collapsed;
+            scheduleSaveState();
+            renderTaskTree();
+          });
+          row.appendChild(arrow);
+
+          const name = document.createElement("span");
+          name.className = "tree-name";
+          name.textContent = dir.name || "(未命名目录)";
+          row.appendChild(name);
+
+          parentEl.appendChild(row);
+
+          if (!dir.collapsed) {
+            renderChildren(dir.id, level + 1, parentEl);
+          }
+        } else {
+          const task = item.obj;
+          const row = document.createElement("div");
+          row.className = "tree-row task-row";
+          row.style.paddingLeft = (4 + level * 16) + "px";
+          row.dataset.nodeType = "task";
+          row.dataset.id = task.id;
+          row.setAttribute("draggable", "true");
+          row.dataset.parentId = parentId;
+
+          row.addEventListener("dragstart", (e) => {
+            draggingTreeItem = { type: "task", id: task.id, parentId };
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", task.id);
+            row.classList.add("dragging");
+          });
+
+          row.addEventListener("dragend", () => {
+            draggingTreeItem = null;
+            document
+              .querySelectorAll(".tree-row.drag-over-top, .tree-row.drag-over-bottom, .tree-row.dragging")
+              .forEach(el => el.classList.remove("drag-over-top", "drag-over-bottom", "dragging"));
+          });
+
+          row.addEventListener("dragover", (e) => {
+            if (!draggingTreeItem) return;
+            if (draggingTreeItem.parentId !== parentId) return;
+            if (draggingTreeItem.type === "task" && draggingTreeItem.id === task.id) return;
+
+            e.preventDefault();
+            const rect = row.getBoundingClientRect();
+            const isTopHalf = (e.clientY - rect.top) < rect.height / 2;
+            row.classList.toggle("drag-over-top", isTopHalf);
+            row.classList.toggle("drag-over-bottom", !isTopHalf);
+          });
+
+          row.addEventListener("dragleave", () => {
+            row.classList.remove("drag-over-top", "drag-over-bottom");
+          });
+
+          row.addEventListener("drop", (e) => {
+            if (!draggingTreeItem) return;
+            if (draggingTreeItem.parentId !== parentId) return;
+
+            e.preventDefault();
+            const rect = row.getBoundingClientRect();
+            const isTopHalf = (e.clientY - rect.top) < rect.height / 2;
+
+            reorderTreeItemsWithinParent(
+              parentId,
+              draggingTreeItem,
+              { type: "task", id: task.id },
+              isTopHalf
+            );
+
+            draggingTreeItem = null;
+            renderTaskTree();
+          });
+
+          if (uiState.currentTaskId === task.id) {
+            row.classList.add("active");
+          }
+
+          const arrow = document.createElement("span");
+          arrow.className = "tree-arrow placeholder";
+          row.appendChild(arrow);
+
+          const name = document.createElement("span");
+          name.className = "tree-name";
+          name.textContent = task.name || "(未命名任务)";
+          row.appendChild(name);
+
+          row.addEventListener("click", () => {
+            uiState.currentTaskId = task.id;
+            uiState.selectedFilePathId = null;
+            uiState.fieldStructure = null;
+            renderAll();
+          });
+
+          parentEl.appendChild(row);
+        }
+      });
+    }
+
+    renderChildren("root", 0, container);
+
+    if (!Object.keys(appState.tasks || {}).length) {
+      const hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = "右键空白处创建目录，再在目录上右键创建任务。";
+      container.appendChild(hint);
+    }
+  }
+
+  // ===========
+  // 渲染：文件组 & 文件路径（含拖拽排序）
+  // ===========
+
+  let draggingGroupId = null;
+
+  function renderFileGroups() {
+    const container = document.getElementById("file-groups");
+    container.innerHTML = "";
+
+    const task = getCurrentTask();
+    if (!task) {
+      const hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = "请先在左侧选择一个任务。";
+      container.appendChild(hint);
+      return;
+    }
+
+    let groups = groupsForTask(task.id);
+    if (!groups.length) {
+      const hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = "右键空白区域创建文件组。";
+      container.appendChild(hint);
+      return;
+    }
+
+    // 确保有展示顺序
+    ensureGroupOrderForTask(task.id);
+
+    // 按 display_index 排序
+    groups = groups.slice().sort((a, b) => {
+      const ai = (typeof a.display_index === "number") ? a.display_index : 0;
+      const bi = (typeof b.display_index === "number") ? b.display_index : 0;
+      return ai - bi;
+    });
+
+    groups.forEach(group => {
+      const groupDiv = document.createElement("div");
+      groupDiv.className = "file-group";
+      groupDiv.dataset.groupId = group.id;
+
+      // 启用拖拽
+      groupDiv.setAttribute("draggable", "true");
+
+      groupDiv.addEventListener("dragstart", (e) => {
+        draggingGroupId = group.id;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", group.id);
+        groupDiv.classList.add("dragging");
+      });
+
+      groupDiv.addEventListener("dragend", () => {
+        draggingGroupId = null;
+        document
+          .querySelectorAll(".file-group.drag-over-top, .file-group.drag-over-bottom, .file-group.dragging")
+          .forEach(el => el.classList.remove("drag-over-top", "drag-over-bottom", "dragging"));
+      });
+
+      groupDiv.addEventListener("dragover", (e) => {
+        if (!draggingGroupId || draggingGroupId === group.id) return;
+        e.preventDefault();
+        const rect = groupDiv.getBoundingClientRect();
+        const offsetY = e.clientY - rect.top;
+        const isTopHalf = offsetY < rect.height / 2;
+        groupDiv.classList.toggle("drag-over-top", isTopHalf);
+        groupDiv.classList.toggle("drag-over-bottom", !isTopHalf);
+      });
+
+      groupDiv.addEventListener("dragleave", () => {
+        groupDiv.classList.remove("drag-over-top", "drag-over-bottom");
+      });
+
+      groupDiv.addEventListener("drop", (e) => {
+        if (!draggingGroupId || draggingGroupId === group.id) return;
+        e.preventDefault();
+        const rect = groupDiv.getBoundingClientRect();
+        const offsetY = e.clientY - rect.top;
+        const isTopHalf = offsetY < rect.height / 2;
+
+        reorderGroupsWithinTask(task.id, draggingGroupId, group.id, isTopHalf);
+        draggingGroupId = null;
+        renderFileGroups();
+      });
+
+      const header = document.createElement("div");
+      header.className = "file-group-header";
+
+      const arrow = document.createElement("span");
+      arrow.className = "tree-arrow";
+      arrow.textContent = group.collapsed ? "▶" : "▼";
+      header.appendChild(arrow);
+
+      const title = document.createElement("div");
+      title.className = "file-group-title";
+      title.textContent = group.name;
+      header.appendChild(title);
+
+      header.addEventListener("click", () => {
+        group.collapsed = !group.collapsed;
+        scheduleSaveState();
+        renderFileGroups();
+      });
+
+      groupDiv.appendChild(header);
+
+      const body = document.createElement("div");
+      body.className = "file-group-body";
+      body.style.display = group.collapsed ? "none" : "block";
+
+      (group.file_paths || []).forEach(fp => {
+        const row = document.createElement("div");
+        row.className = "file-path-row";
+        row.dataset.filePathId = fp.id;
+        if (uiState.selectedFilePathId === fp.id) {
+          row.classList.add("active");
+        }
+
+        const main = document.createElement("div");
+        main.className = "file-path-main";
+
+        const textSpan = document.createElement("span");
+        textSpan.className = "file-path-text";
+        textSpan.textContent = fp.path;
+        main.appendChild(textSpan);
+
+        if (fp.info) {
+          const infoSpan = document.createElement("span");
+          infoSpan.className = "file-path-info";
+          infoSpan.textContent = `文件数: ${fp.info.file_count}, 总行数: ${fp.info.total_lines}`;
+          main.appendChild(infoSpan);
+        }
+
+        row.appendChild(main);
+
+        row.addEventListener("click", async () => {
+          uiState.selectedFilePathId = fp.id;
+          renderFileGroups();
+
+          const taskId = group.task_id;
+          const resolvedPath = resolveTaskVarsInString(fp.path, taskId);
+
+          const struct = await requestFileStructure(resolvedPath);
+          if (struct) {
+            uiState.fieldStructure = { struct, path: resolvedPath };
+            renderFieldStructure();
+          }
+        });
+
+        body.appendChild(row);
+      });
+
+      groupDiv.appendChild(body);
+      container.appendChild(groupDiv);
+    });
+  }
+
+  // ===========
+  // 渲染：字段结构
+  // ===========
+
+  function renderFieldStructure() {
+    const container = document.getElementById("field-structure");
+    container.innerHTML = "";
+
+    if (!uiState.fieldStructure) {
+      const div = document.createElement("div");
+      div.className = "field-structure-empty";
+      div.textContent = "请在第二栏点击某个文件路径，展示其第一行数据的结构。";
+      container.appendChild(div);
+      return;
+    }
+
+    const struct = uiState.fieldStructure.struct;
+
+    const rootRow = document.createElement("div");
+    rootRow.className = "field-row";
+
+    const toggle = document.createElement("span");
+    toggle.className = "field-toggle";
+    toggle.textContent = "▼";
+    rootRow.appendChild(toggle);
+
+    const rootName = document.createElement("span");
+    rootName.className = "field-name";
+    rootName.dataset.path = ".";
+    rootName.textContent = ".";
+    rootRow.appendChild(rootName);
+
+    const typeSpan = document.createElement("span");
+    typeSpan.className = "field-type";
+    typeSpan.textContent = "[root]";
+    rootRow.appendChild(typeSpan);
+
+    container.appendChild(rootRow);
+
+    const childrenContainer = document.createElement("div");
+    childrenContainer.className = "field-children";
+    container.appendChild(childrenContainer);
+
+    toggle.addEventListener("click", () => {
+      const hidden = childrenContainer.style.display === "none";
+      childrenContainer.style.display = hidden ? "block" : "none";
+      toggle.textContent = hidden ? "▼" : "▶";
+    });
+
+    function renderNode(node, parentPath, parentEl, listContext) {
+      if (!node) return;
+      const type = node.type;
+      if (type === "dict") {
+        const children = node.children || {};
+        Object.keys(children).forEach(key => {
+          const childNode = children[key];
+          const pathPrefix = parentPath || ".";
+          const path = pathPrefix === "."
+            ? "." + key + (childNode.type === "list" ? "[]" : "")
+            : parentPath + "." + key + (childNode.type === "list" ? "[]" : "");
+
+          const row = document.createElement("div");
+          row.className = "field-row";
+
+          const hasChildren = childNode.type === "dict" || childNode.type === "list";
+          const toggle = document.createElement("span");
+          toggle.className = "field-toggle";
+          if (!hasChildren) {
+            toggle.classList.add("empty");
+            toggle.textContent = "";
+          } else {
+            toggle.textContent = "▼";
+          }
+          row.appendChild(toggle);
+
+          const nameSpan = document.createElement("span");
+          nameSpan.className = "field-name";
+          nameSpan.dataset.path = path;
+          nameSpan.textContent = key + (childNode.type === "list" ? "[]" : "");
+          row.appendChild(nameSpan);
+
+          const typeSpan = document.createElement("span");
+          typeSpan.className = "field-type";
+          if (childNode.type === "dict") {
+            typeSpan.textContent = "[dict]";
+          } else if (childNode.type === "list") {
+            typeSpan.textContent = "[list]";
+          } else {
+            typeSpan.textContent = "[" + (childNode.value_type || "value") + "]";
+          }
+          row.appendChild(typeSpan);
+
+          parentEl.appendChild(row);
+
+          let childrenWrapper = null;
+          if (hasChildren) {
+            childrenWrapper = document.createElement("div");
+            childrenWrapper.className = "field-children";
+            parentEl.appendChild(childrenWrapper);
+
+            toggle.addEventListener("click", () => {
+              const hidden = childrenWrapper.style.display === "none";
+              childrenWrapper.style.display = hidden ? "block" : "none";
+              toggle.textContent = hidden ? "▼" : "▶";
+            });
+          }
+
+          if (childNode.type === "dict") {
+            renderNode(childNode, path, childrenWrapper, false);
+          } else if (childNode.type === "list") {
+            renderListItem(childNode, path, childrenWrapper);
+          }
+        });
+      } else if (type === "list") {
+        renderListItem(node, parentPath, parentEl);
+      }
+    }
+
+    function renderListItem(listNode, listPath, parentEl) {
+      if (!listNode) return;
+      const item = listNode.item || null;
+      if (!item) return;
+
+      if (item.type === "dict") {
+        renderNode(item, listPath, parentEl, true);
+      } else if (item.type === "value") {
+        const row = document.createElement("div");
+        row.className = "field-row";
+
+        const toggle = document.createElement("span");
+        toggle.className = "field-toggle empty";
+        toggle.textContent = "";
+        row.appendChild(toggle);
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "field-name";
+        nameSpan.dataset.path = listPath;
+        nameSpan.textContent = listPath;
+        row.appendChild(nameSpan);
+
+        const typeSpan = document.createElement("span");
+        typeSpan.className = "field-type";
+        typeSpan.textContent = "[" + (item.value_type || "value") + "]";
+        row.appendChild(typeSpan);
+
+        parentEl.appendChild(row);
+      } else if (item.type === "list") {
+        const row = document.createElement("div");
+        row.className = "field-row";
+
+        const toggle = document.createElement("span");
+        toggle.className = "field-toggle";
+        toggle.textContent = "▼";
+        row.appendChild(toggle);
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "field-name";
+        nameSpan.dataset.path = listPath + "[]";
+        nameSpan.textContent = listPath + "[]";
+        row.appendChild(nameSpan);
+
+        const typeSpan = document.createElement("span");
+        typeSpan.className = "field-type";
+        typeSpan.textContent = "[list]";
+        row.appendChild(typeSpan);
+
+        parentEl.appendChild(row);
+
+        const childrenWrapper = document.createElement("div");
+        childrenWrapper.className = "field-children";
+        parentEl.appendChild(childrenWrapper);
+
+        toggle.addEventListener("click", () => {
+          const hidden = childrenWrapper.style.display === "none";
+          childrenWrapper.style.display = hidden ? "block" : "none";
+          toggle.textContent = hidden ? "▼" : "▶";
+        });
+
+        renderListItem(item, listPath + "[]", childrenWrapper);
+      }
+    }
+
+    renderNode(struct, ".", childrenContainer, false);
+
+    container.onclick = function (e) {
+      const nameEl = e.target.closest(".field-name");
+      if (!nameEl) return;
+      const path = nameEl.dataset.path;
+      if (!path) return;
+      copyToClipboard(path);
+      console.log("字段路径已复制:", path);
+    };
+  }
+
+    // ===========
+  // 渲染：操作序列画板（含拖拽排序 + 折叠 + 分支）
+  // ===========
+
+  let draggingSequenceId = null;
+
+  // 构造单个节点 DOM（树形递归中复用）
+  function createSequenceNodeElement(seq, node) {
+    const nodeDiv = document.createElement("div");
+    nodeDiv.className = "sequence-node";
+    nodeDiv.dataset.nodeType = node.node_type === "root" ? "root-node" : "op-node";
+    nodeDiv.dataset.sequenceId = seq.id;
+    nodeDiv.dataset.nodeId = node.id;
+    if (node.frozen) {
+      nodeDiv.classList.add("frozen");
+    }
+    if (node.node_type === "root") {
+      nodeDiv.classList.add("root");
+    }
+    if (node.executed) {
+      nodeDiv.classList.add("executed");
+    }
+
+    const main = document.createElement("div");
+    main.className = "sequence-node-main";
+
+    const titleSpan = document.createElement("span");
+    titleSpan.className = "sequence-node-title";
+    titleSpan.textContent = node.name || (node.node_type === "root" ? "根节点" : "未命名节点");
+    main.appendChild(titleSpan);
+
+    const typeSpan = document.createElement("span");
+    typeSpan.className = "sequence-node-type";
+    if (node.node_type === "root") {
+      typeSpan.textContent = "根节点（文件组合并数据）";
+    } else {
+      typeSpan.textContent = node.function_name ? `函数: ${node.function_name}` : "函数未设置";
+    }
+    main.appendChild(typeSpan);
+
+    nodeDiv.appendChild(main);
+
+    // 结果路径展示行（始终创建，便于输入时实时更新）
+    let resultPathEl = null;
+    if (node.node_type === "op") {
+      resultPathEl = document.createElement("div");
+      resultPathEl.className = "sequence-node-result-path";
+      resultPathEl.dataset.role = "result-save-path";
+      resultPathEl.textContent = node.result_save_path || "";
+      resultPathEl.style.display = node.result_save_path ? "block" : "none";
+      nodeDiv.appendChild(resultPathEl);
+    }
+
+    const edit = document.createElement("div");
+    edit.className = "sequence-node-edit";
+
+    if (node.node_type === "op") {
+      const nameLabel = document.createElement("label");
+      nameLabel.textContent = "节点名称：";
+      const nameInput = document.createElement("input");
+      nameInput.value = node.name || "";
+      nameLabel.appendChild(nameInput);
+      edit.appendChild(nameLabel);
+
+      const funcLabel = document.createElement("label");
+      funcLabel.textContent = "函数名称（可输可选）：";
+      const funcInput = document.createElement("input");
+      funcInput.setAttribute("list", "function-names");
+      funcInput.value = node.function_name || "";
+      funcLabel.appendChild(funcInput);
+      edit.appendChild(funcLabel);
+
+      const paramsLabel = document.createElement("label");
+      paramsLabel.textContent = "参数（JSON 字符串）：";
+
+      // --- 新增：插入引用按钮条（不强制用，纯辅助）---
+      const refBar = document.createElement("div");
+      refBar.style.display = "flex";
+      refBar.style.gap = "6px";
+      refBar.style.margin = "6px 0 8px 0";
+      refBar.style.flexWrap = "wrap";
+
+      const btnInsertGroupRef = document.createElement("button");
+      btnInsertGroupRef.type = "button";
+      btnInsertGroupRef.textContent = "插入文件组引用";
+
+      const btnInsertNodeOutRef = document.createElement("button");
+      btnInsertNodeOutRef.type = "button";
+      btnInsertNodeOutRef.textContent = "插入节点输出引用";
+
+      refBar.appendChild(btnInsertGroupRef);
+      refBar.appendChild(btnInsertNodeOutRef);
+      // ✅ 方案A：阻止按钮抢焦点，避免 paramsTextarea blur 触发 JSON 校验弹窗
+      function preventButtonStealFocus(btn) {
+        // Safari/Chrome/Edge 基本都支持 pointerdown
+        btn.addEventListener("pointerdown", (ev) => {
+          ev.preventDefault(); // 不让按钮获得焦点
+        });
+        // 兜底：少数环境只有 mousedown
+        btn.addEventListener("mousedown", (ev) => {
+          ev.preventDefault();
+        });
+      }
+
+      // 对三个按钮都生效
+      preventButtonStealFocus(btnInsertGroupRef);
+      preventButtonStealFocus(btnInsertNodeOutRef);
+
+      // --- params textarea ---
+      const paramsTextarea = document.createElement("textarea");
+      paramsTextarea.value = node.params_json || "{}";
+      paramsLabel.appendChild(refBar);
+      paramsLabel.appendChild(paramsTextarea);
+      edit.appendChild(paramsLabel);
+
+      btnInsertGroupRef.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const items = listAllFileGroups();
+        const picked = promptPickFromList(
+          "选择要引用的文件组",
+          items,
+          it => `[${it.task_name}] ${it.name}  (id=${it.id})`
+        );
+        if (!picked) return;
+        const snippet = buildRefSnippet({
+          kind: "file_group",
+          file_group_id: picked.id,
+          file_group_name: picked.name
+        });
+        insertTextAtCursor(paramsTextarea, snippet);
+      });
+
+      btnInsertNodeOutRef.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const items = listAllNodeOutputs();
+        const picked = promptPickFromList(
+          "选择要引用的节点输出（result_save_path 必须非空）",
+          items,
+          it => `[${it.task_name}/${it.sequence_name}/${it.node_name}] ${it.result_save_path}  (seq=${it.sequence_id}, node=${it.node_id})`
+        );
+        if (!picked) return;
+        const snippet = buildRefSnippet({
+          kind: "node_output",
+          sequence_id: picked.sequence_id,
+          node_id: picked.node_id,
+          node_name: picked.node_name
+        });
+        insertTextAtCursor(paramsTextarea, snippet);
+      });
+
+      const resultLabel = document.createElement("label");
+      resultLabel.textContent = "保存结果路径（可为空；支持 {{var}}）：";
+      const resultInput = document.createElement("input");
+      resultInput.value = node.result_save_path || "";
+      resultLabel.appendChild(resultInput);
+      edit.appendChild(resultLabel);
+
+      const descLabel = document.createElement("label");
+      descLabel.textContent = "代码（可选）：";
+      const descTextarea = document.createElement("textarea");
+      descTextarea.value = node.description || "";
+      descLabel.appendChild(descTextarea);
+      edit.appendChild(descLabel);
+
+      function markNeedRerunAndSave(skipHistory) {
+        const wasExecuted = !!node.executed; // 或者检查子树是否有 true
+        if (wasExecuted) {
+          setExecutedForNodeAndDescendants(seq, node.id, false);
+          applyExecutionStyles();
+        }
+        scheduleSaveState(!!skipHistory);
+      }
+
+      function updateMainTitle() {
+        titleSpan.textContent = node.name || (node.node_type === "root" ? "根节点" : "未命名节点");
+      }
+      function updateMainType() {
+        if (node.node_type === "root") {
+          typeSpan.textContent = "根节点（文件组合并数据）";
+        } else {
+          typeSpan.textContent = node.function_name ? `函数: ${node.function_name}` : "函数未设置";
+        }
+      }
+      function updateResultPathLine() {
+        if (!resultPathEl) return;
+        const v = node.result_save_path || "";
+        resultPathEl.textContent = v;
+        resultPathEl.style.display = v ? "block" : "none";
+      }
+
+      // ========== 实时绑定（input：实时保存不入撤销；blur/change：提交入撤销） ==========
+
+      // 节点名称
+      nameInput.addEventListener("input", () => {
+        node.name = (nameInput.value || "").trim();
+        updateMainTitle();
+        markNeedRerunAndSave(true);
+      });
+      nameInput.addEventListener("blur", () => {
+        const v = (nameInput.value || "").trim() || "未命名节点";
+        node.name = v;
+        nameInput.value = v; // ✅
+        updateMainTitle();
+        markNeedRerunAndSave(false);
+      });
+
+      // 函数名
+      funcInput.addEventListener("input", () => {
+        const v = (funcInput.value || "").trim();
+        node.function_name = v || null;
+        updateMainType();
+        markNeedRerunAndSave(true);
+      });
+      funcInput.addEventListener("blur", () => {
+        const v = (funcInput.value || "").trim();
+        node.function_name = v || null;
+        funcInput.value = v; // ✅ 回写归一化（去掉首尾空格）
+        updateMainType();
+        markNeedRerunAndSave(false);
+      });
+
+      // 参数 JSON：输入时不弹窗；blur 时如果非法给一次提示（但仍允许保存字符串的话可把校验去掉）
+      paramsTextarea.addEventListener("input", () => {
+        node.params_json = paramsTextarea.value || "{}";
+        markNeedRerunAndSave(true);
+      });
+      let lastInvalidParamsValue = null;
+      paramsTextarea.addEventListener("blur", () => {
+        const v = (paramsTextarea.value || "{}").trim() || "{}";
+
+        // ✅ 回写最终值（你之前也想要这个行为）
+        paramsTextarea.value = v;
+        node.params_json = v;
+
+        // ✅ 只在“本次 blur”做一次校验；且同一个非法内容不重复弹
+        try {
+          JSON.parse(v);
+          lastInvalidParamsValue = null; // 合法后清空“已提醒”记忆
+        } catch (e) {
+          if (lastInvalidParamsValue !== v) {
+            lastInvalidParamsValue = v;
+            showMessage("参数必须是格式正确的 JSON 字符串。");
+          }
+          // 这里不 return，让它仍然能保存字符串（符合你“实时保存”的语义）
+        }
+
+        markNeedRerunAndSave(false);
+      });
+
+      // 保存结果路径
+      resultInput.addEventListener("input", () => {
+        node.result_save_path = (resultInput.value || "").trim();
+        updateResultPathLine();
+        markNeedRerunAndSave(true);
+      });
+      resultInput.addEventListener("blur", () => {
+        const v = (resultInput.value || "").trim();
+        node.result_save_path = v;     // 最终允许空字符串
+        resultInput.value = v;         // ✅ 回写
+        updateResultPathLine();
+        markNeedRerunAndSave(false);
+      });
+
+      // 代码/描述
+      descTextarea.addEventListener("input", () => {
+        node.description = descTextarea.value || "";
+        markNeedRerunAndSave(true);
+      });
+      descTextarea.addEventListener("blur", () => {
+        const v = (descTextarea.value || "").trim();
+        node.description = v;
+        descTextarea.value = v; // ✅ 回写
+        markNeedRerunAndSave(false);
+      });
+    } else {
+      const info = document.createElement("div");
+      info.textContent = "根节点由文件组自动生成，不支持编辑。";
+      edit.appendChild(info);
+    }
+
+    nodeDiv.appendChild(edit);
+
+    if (node.node_type === "op") {
+      main.addEventListener("click", () => {
+        const visible = edit.style.display === "block";
+        edit.style.display = visible ? "none" : "block";
+        nodeDiv.classList.toggle("highlight", !visible);
+      });
+    }
+
+    return nodeDiv;
+  }
+
+  // 树形渲染：同一父节点的子节点横向排列
+  function renderSequenceTree(seq, container) {
+    const nodes = seq.nodes || [];
+    if (!nodes.length) return;
+
+    const indexMap = {};
+    nodes.forEach((n, idx) => {
+      indexMap[n.id] = idx;
+    });
+
+    const childrenMap = {};
+    nodes.forEach(n => {
+      const pid = n.parent_id;
+      if (pid == null) return;
+      if (!childrenMap[pid]) childrenMap[pid] = [];
+      childrenMap[pid].push(n);
+    });
+
+    Object.keys(childrenMap).forEach(pid => {
+      childrenMap[pid].sort((a, b) => indexMap[a.id] - indexMap[b.id]);
+    });
+
+    const rootNode =
+      nodes.find(n => n.node_type === "root") ||
+      nodes.find(n => n.parent_id == null) ||
+      nodes[0];
+
+    function renderNodeRecursive(node, parentEl) {
+      const block = document.createElement("div");
+      block.className = "sequence-node-block";
+
+      const nodeEl = createSequenceNodeElement(seq, node);
+      block.appendChild(nodeEl);
+
+      const children = childrenMap[node.id] || [];
+      if (children.length) {
+        const childrenRow = document.createElement("div");
+        childrenRow.className = "sequence-node-children";
+
+        children.forEach(child => {
+          const branchEl = document.createElement("div");
+          branchEl.className = "sequence-node-branch";
+          renderNodeRecursive(child, branchEl);
+          childrenRow.appendChild(branchEl);
+        });
+
+        block.appendChild(childrenRow);
+      }
+
+      parentEl.appendChild(block);
+    }
+
+    if (rootNode) {
+      renderNodeRecursive(rootNode, container);
+    }
+  }
+
+  function renderOperationArea() {
+    const container = document.getElementById("operation-area");
+    container.innerHTML = "";
+
+    const task = getCurrentTask();
+    if (!task) {
+      const hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = "请先在左侧选择一个任务。";
+      container.appendChild(hint);
+      return;
+    }
+
+    let sequences = sequenceNodesForTask(task.id);
+    if (!sequences.length) {
+      const hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = "在第二栏某个文件组上右键，创建操作序列画板。";
+      container.appendChild(hint);
+      return;
+    }
+
+    // 确保有显示顺序
+    ensureSequenceOrderForTask(task.id);
+
+    // 按 display_index 排序展示
+    sequences = sequences.slice().sort((a, b) => {
+      const ai = (typeof a.display_index === "number") ? a.display_index : 0;
+      const bi = (typeof b.display_index === "number") ? b.display_index : 0;
+      return ai - bi;
+    });
+
+    sequences.forEach(seq => {
+      const board = document.createElement("div");
+      board.className = "sequence-board";
+      board.dataset.sequenceId = seq.id;
+
+      // 启用拖拽
+      board.setAttribute("draggable", "true");
+
+      // 拖拽事件
+      board.addEventListener("dragstart", (e) => {
+        draggingSequenceId = seq.id;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", seq.id);
+        board.classList.add("dragging");
+      });
+
+      board.addEventListener("dragend", () => {
+        draggingSequenceId = null;
+        document
+          .querySelectorAll(".sequence-board.drag-over-top, .sequence-board.drag-over-bottom, .sequence-board.dragging")
+          .forEach(el => el.classList.remove("drag-over-top", "drag-over-bottom", "dragging"));
+      });
+
+      board.addEventListener("dragover", (e) => {
+        if (!draggingSequenceId || draggingSequenceId === seq.id) return;
+        e.preventDefault();
+        const rect = board.getBoundingClientRect();
+        const offsetY = e.clientY - rect.top;
+        const isTopHalf = offsetY < rect.height / 2;
+
+        board.classList.toggle("drag-over-top", isTopHalf);
+        board.classList.toggle("drag-over-bottom", !isTopHalf);
+      });
+
+      board.addEventListener("dragleave", () => {
+        board.classList.remove("drag-over-top", "drag-over-bottom");
+      });
+
+      board.addEventListener("drop", (e) => {
+        if (!draggingSequenceId || draggingSequenceId === seq.id) return;
+        e.preventDefault();
+
+        const rect = board.getBoundingClientRect();
+        const offsetY = e.clientY - rect.top;
+        const isTopHalf = offsetY < rect.height / 2;
+
+        reorderSequencesWithinTask(task.id, draggingSequenceId, seq.id, isTopHalf);
+        draggingSequenceId = null;
+        renderOperationArea();
+      });
+
+      const header = document.createElement("div");
+      header.className = "sequence-header";
+      header.dataset.nodeType = "sequence-board";
+      header.dataset.sequenceId = seq.id;
+
+      // 左侧折叠/展开小三角
+      const collapsed = !!seq.collapsed;
+      const arrow = document.createElement("span");
+      arrow.className = "tree-arrow";
+      arrow.textContent = collapsed ? "▶" : "▼";
+      header.appendChild(arrow);
+
+      // 标题区域：第一行显示 [文件组] 操作序列名称，第二行显示代码保存路径
+      const title = document.createElement("div");
+      title.className = "sequence-title";
+
+      // 第一行：原来的标题
+      const mainLine = document.createElement("div");
+      mainLine.className = "sequence-title-main";
+      const group = appState.file_groups[seq.file_group_id];
+      const groupName = group ? group.name : "(未知文件组)";
+      mainLine.textContent = `[${groupName}] ${seq.name}`;
+      title.appendChild(mainLine);
+
+      // 第二行：代码保存路径（始终创建，便于输入时实时更新）
+      const codeLine = document.createElement("div");
+      codeLine.className = "sequence-code-path";
+      codeLine.dataset.role = "code-save-path";
+      codeLine.textContent = seq.code_save_path || "";
+      codeLine.style.display = seq.code_save_path ? "block" : "none";
+      title.appendChild(codeLine);
+
+      // 把标题块挂到 header 里（关键的一行）
+      header.appendChild(title);
+
+      board.appendChild(header);
+
+      const meta = document.createElement("div");
+      meta.className = "sequence-meta";
+      const showMeta = !!seq.show_meta && !collapsed;
+      meta.style.display = showMeta ? "block" : "none";
+
+      const codeLabel = document.createElement("label");
+      codeLabel.textContent = "代码保存路径（支持 {{var}}）：";
+      const codeInput = document.createElement("input");
+      codeInput.value = seq.code_save_path || "";
+      codeLabel.appendChild(codeInput);
+      meta.appendChild(codeLabel);
+
+      // 取到标题第二行（上面 A1 已保证一定存在）
+      const codeLineEl = header.querySelector('[data-role="code-save-path"]');
+
+      function commitCodeSavePath(skipHistory) {
+        const v = (codeInput.value || "").trim();
+        seq.code_save_path = v ? v : null;
+
+        // ✅ 回写：让输入框也变成“去空格后的样子”
+        codeInput.value = v;
+
+        // 标题第二行实时更新 + 显隐
+        if (codeLineEl) {
+          codeLineEl.textContent = seq.code_save_path || "";
+          codeLineEl.style.display = seq.code_save_path ? "block" : "none";
+        }
+
+        scheduleSaveState(!!skipHistory);
+      }
+
+      // 实时保存（不进撤销栈）
+      codeInput.addEventListener("input", () => commitCodeSavePath(true));
+      // 提交保存（进撤销栈）
+      codeInput.addEventListener("change", () => commitCodeSavePath(false));
+      codeInput.addEventListener("blur",   () => commitCodeSavePath(false));
+
+      board.appendChild(meta);
+
+      // 小三角点击：折叠/展开整个画板（meta + nodes）
+      arrow.addEventListener("click", (e) => {
+        e.stopPropagation();
+        seq.collapsed = !seq.collapsed;
+        scheduleSaveState();
+        renderOperationArea();
+      });
+
+      // 标题区域点击：切换路径配置显示；若当前是折叠状态，则先展开
+      header.addEventListener("click", () => {
+        if (seq.collapsed) {
+          seq.collapsed = false;
+        }
+        seq.show_meta = !seq.show_meta;
+        scheduleSaveState();
+        renderOperationArea();
+      });
+
+      const nodesContainer = document.createElement("div");
+      nodesContainer.className = "sequence-nodes";
+      nodesContainer.style.display = collapsed ? "none" : "block";
+
+      // 新：树形渲染，支持横向分支
+      renderSequenceTree(seq, nodesContainer);
+
+      board.appendChild(nodesContainer);
+      container.appendChild(board);
+    });
+
+    // 渲染完后根据 executed 状态刷新样式
+    applyExecutionStyles();
+  }
+
+  // ===========
+  // 右键菜单
+  // ===========
+
+  const contextMenuEl = document.getElementById("context-menu");
+  let contextTarget = null;
+
+  function hideContextMenu() {
+    contextMenuEl.style.display = "none";
+    contextMenuEl.innerHTML = "";
+    contextTarget = null;
+  }
+
+  document.addEventListener("click", () => {
+    hideContextMenu();
+  });
+
+  let copiedTaskIdForFullCopy = null;
+  let copiedSequenceTemplate = null; 
+  let copiedOpNodeTemplate = null; // 用于存储复制的 op 节点模板
+
+  function showContextMenu(type, payload, pageX, pageY) {
+    contextTarget = { type, payload };
+    contextMenuEl.innerHTML = "";
+    function addItem(text, action) {
+      const div = document.createElement("div");
+      div.className = "context-menu-item";
+      div.textContent = text;
+      div.dataset.action = action;
+      contextMenuEl.appendChild(div);
+    }
+    function addDivider() {
+      const div = document.createElement("div");
+      div.className = "context-menu-divider";
+      contextMenuEl.appendChild(div);
+    }
+
+    // 第一列：空白 & 目录 & 任务
+    if (type === "task-empty") {
+      addItem("创建目录", "create-directory-root");
+    } else if (type === "directory") {
+      addItem("目录重命名", "rename-directory");
+      addItem("删除目录", "delete-directory");
+      addItem("复制目录名称", "copy-directory-name");
+      addDivider();
+      addItem("创建子目录", "create-sub-directory");
+      addItem("创建任务", "create-task");
+      addDivider();
+      addItem("粘贴任务（完整副本）", "paste-task");
+    } else if (type === "task") {
+      addItem("任务重命名", "rename-task");
+      addItem("删除任务", "delete-task");
+      addItem("复制任务名称", "copy-task-name");
+      addItem("复制完整任务（包含文件组和操作序列）", "copy-task-full");
+    }
+
+    // 第二列：文件组区域
+    if (type === "group-empty") {
+      addItem("创建文件组", "create-file-group");
+    } else if (type === "file-group") {
+      addItem("文件组重命名", "rename-file-group");
+      addItem("删除文件组", "delete-file-group");
+      addItem("复制文件组名称", "copy-file-group-name");
+      addDivider();
+      addItem("添加文件路径（多行，支持通配符）", "add-file-paths");
+      addDivider();
+      addItem("在第四栏创建操作序列画板", "create-sequence-board");
+      if (copiedSequenceTemplate) {
+        addDivider();
+        const fromName = copiedSequenceTemplate.fromTaskName;
+        addItem(`粘贴操作序列（来自任务：${fromName}）`, "paste-sequence");
+      }
+    } else if (type === "file-path") {
+      addItem("删除文件路径", "delete-file-path");
+      addItem("复制文件路径", "copy-file-path");
+      addItem("修改文件路径", "edit-file-path");
+      addDivider();
+      addItem("复制非空第一行数据内容", "copy-first-line");
+      addItem("复制非空最后一行数据内容", "copy-last-line");
+      addItem("显示文件路径信息（文件数 & 总行数）", "show-file-info");
+    }
+
+    // 第四列：操作序列 & 节点
+    if (type === "sequence-board") {
+      addItem("重命名操作序列", "rename-sequence-board");
+      addItem("复制整个操作序列（完整）", "copy-sequence-full");
+      addDivider();
+      addItem("生成可执行代码", "generate-code");
+      addItem("在完整数据上执行操作序列", "run-sequence");
+      addDivider();
+      addItem("删除该操作序列画板", "delete-sequence-board");
+    } else if (type === "root-node") {
+      const seqId = payload.sequenceId;
+      const nodeId = payload.nodeId;
+      const seq = appState.operation_sequences[seqId];
+      const node = seq ? (seq.nodes || []).find(n => n.id === nodeId) : null;
+
+      if (node && node.executed) addItem("标记为未完成（executed=false，子树清空）", "set-executed-false");
+      else addItem("标记为已完成（executed=true，父链补齐）", "set-executed-true");
+      addDivider();
+
+      addItem("在该节点后线性插入节点", "insert-linear-node");
+      addItem("在该节点后插入子节点（新分支）", "insert-child-node");
+      if (copiedOpNodeTemplate) {
+        addDivider();
+        addItem("线性粘贴已复制节点", "paste-op-node-linear");
+        addItem("在该节点后粘贴为新分支", "paste-op-node-below");
+      }
+    } else if (type === "op-node") {
+      const seqId = payload.sequenceId;
+      const nodeId = payload.nodeId;
+      const seq = appState.operation_sequences[seqId];
+      const node = seq ? seq.nodes.find(n => n.id === nodeId) : null;
+      
+      if (node) {
+        if (node.frozen) {
+          addItem("解冻该节点及子节点", "toggle-freeze-node");
+        } else {
+          addItem("冻结该节点及子节点 (忽略执行)", "toggle-freeze-node");
+        }
+        addDivider();
+      }
+      if (node) {
+        if (node.executed) addItem("标记为未完成（executed=false，子树清空）", "set-executed-false");
+        else addItem("标记为已完成（executed=true，父链补齐）", "set-executed-true");
+        addDivider();
+      }
+      // 普通 op 节点：同样支持线性插入 / 线性粘贴 + 原有操作
+      addItem("在该节点后线性插入节点", "insert-linear-node");
+      addItem("在该节点后插入子节点（新分支）", "insert-child-node");
+      // addItem("在该节点后插入多个子节点（多分支）", "insert-multi-child-nodes");
+      addItem("删除该子节点（连带后续链路）", "delete-child-node");
+      addItem("删除该节点并桥接前后链路", "delete-child-node-bridge");
+      addDivider();
+      addItem("复制该节点", "copy-op-node");
+      if (copiedOpNodeTemplate) {
+        addItem("线性粘贴已复制节点", "paste-op-node-linear");
+        addItem("在该节点后粘贴为新分支", "paste-op-node-below");
+      }
+    }
+
+
+    if (!contextMenuEl.children.length) {
+      return;
+    }
+
+    contextMenuEl.style.left = pageX + "px";
+    contextMenuEl.style.top = pageY + "px";
+    contextMenuEl.style.display = "block";
+  }
+
+  contextMenuEl.addEventListener("click", async e => {
+    e.stopPropagation();
+    const item = e.target.closest(".context-menu-item");
+    if (!item || !contextTarget) return;
+    const action = item.dataset.action;
+    const { type, payload } = contextTarget;
+    hideContextMenu();
+    await handleContextAction(type, action, payload);
+    renderAll();
+  });
+
+  // ===========
+  // 右键菜单动作实现
+  // ===========
+
+  async function handleContextAction(type, action, payload) {
+    // 第一列：目录/任务
+    if (type === "task-empty") {
+      if (action === "create-directory-root") {
+        const name = prompt("请输入目录名称：", "新建目录");
+        if (!name) return;
+        const id = createId();
+        appState.directories[id] = {
+          id,
+          name: name.trim(),
+          parent_id: "root",
+          collapsed: false,
+          display_index: getMaxTreeDisplayIndex("root") + 1
+        };
+        scheduleSaveState();
+      }
+    } else if (type === "directory") {
+      const dirId = payload.id;
+      const dir = appState.directories[dirId];
+      if (!dir) return;
+
+      if (action === "rename-directory") {
+        const newName = prompt("请输入新的目录名称：", dir.name);
+        if (!newName) return;
+        dir.name = newName.trim();
+        scheduleSaveState();
+      } else if (action === "delete-directory") {
+        const ok = confirm("确定要删除该目录及其所有子目录和任务吗？该操作不可撤销。");
+        if (!ok) return;
+        const toDeleteDirIds = new Set([dirId]);
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const id in appState.directories) {
+            const d = appState.directories[id];
+            if (d.parent_id && toDeleteDirIds.has(d.parent_id) && !toDeleteDirIds.has(id)) {
+              toDeleteDirIds.add(id);
+              changed = true;
+            }
+          }
+        }
+        const toDeleteTaskIds = [];
+        for (const taskId in appState.tasks) {
+          const t = appState.tasks[taskId];
+          const pid = t.directory_id || "root";
+          if (toDeleteDirIds.has(pid)) {
+            toDeleteTaskIds.push(taskId);
+          }
+        }
+        toDeleteTaskIds.forEach(taskId => {
+          delete appState.tasks[taskId];
+          for (const fgId in appState.file_groups) {
+            if (appState.file_groups[fgId].task_id === taskId) {
+              delete appState.file_groups[fgId];
+            }
+          }
+          for (const seqId in appState.operation_sequences) {
+            if (appState.operation_sequences[seqId].task_id === taskId) {
+              delete appState.operation_sequences[seqId];
+            }
+          }
+        });
+        toDeleteDirIds.forEach(id => {
+          delete appState.directories[id];
+        });
+        if (uiState.currentTaskId && !appState.tasks[uiState.currentTaskId]) {
+          uiState.currentTaskId = null;
+        }
+        scheduleSaveState();
+      } else if (action === "copy-directory-name") {
+        copyToClipboard(dir.name || "");
+      } else if (action === "create-sub-directory") {
+        const name = prompt("请输入子目录名称：", "新建子目录");
+        if (!name) return;
+        const id = createId();
+        appState.directories[id] = {
+          id,
+          name: name.trim(),
+          parent_id: dirId,
+          collapsed: false,
+          display_index: getMaxTreeDisplayIndex(dirId) + 1
+        };
+        scheduleSaveState();
+      } else if (action === "create-task") {
+        let baseName = "新建任务";
+        const siblings = Object.values(appState.tasks).filter(
+          t => (t.directory_id || "root") === dirId
+        ).map(t => t.name);
+        const name = prompt(
+          "请输入任务名称：",
+          generateUniqueName(baseName, siblings)
+        );
+        if (!name) return;
+        const id = createId();
+        appState.tasks[id] = {
+          id,
+          name: name.trim(),
+          directory_id: dirId,
+          vars: {},   // 新任务初始变量
+          display_index: getMaxTreeDisplayIndex(dirId) + 1
+        };
+        uiState.currentTaskId = id;
+        scheduleSaveState();
+      } else if (action === "paste-task") {
+        if (!copiedTaskIdForFullCopy || !appState.tasks[copiedTaskIdForFullCopy]) {
+          showMessage("当前没有可粘贴的任务，请先在任务上选择“复制完整任务”。");
+          return;
+        }
+        const srcTask = appState.tasks[copiedTaskIdForFullCopy];
+        const siblings = Object.values(appState.tasks).filter(
+          t => (t.directory_id || "root") === dirId
+        ).map(t => t.name);
+        let baseName = srcTask.name + "_副本";
+        let newName = baseName + " 1";
+        let idx = 1;
+        while (siblings.includes(newName)) {
+          idx++;
+          newName = baseName + " " + idx;
+        }
+        const finalName = prompt("请输入新任务名称：", newName) || newName;
+        const newTaskId = createId();
+        appState.tasks[newTaskId] = {
+          id: newTaskId,
+          name: finalName.trim(),
+          directory_id: dirId,
+          vars: srcTask.vars ? { ...srcTask.vars } : {},
+          display_index: getMaxTreeDisplayIndex(dirId) + 1
+        };
+
+        const oldGroups = Object.values(appState.file_groups).filter(
+          g => g.task_id === srcTask.id
+        );
+        const groupIdMap = {};
+        oldGroups.forEach(g => {
+          const newGroupId = createId();
+          groupIdMap[g.id] = newGroupId;
+          appState.file_groups[newGroupId] = {
+            id: newGroupId,
+            name: g.name,
+            task_id: newTaskId,
+            collapsed: g.collapsed,
+            display_index: g.display_index,
+            file_paths: (g.file_paths || []).map(fp => ({
+              id: createId(),
+              path: fp.path,
+              info: fp.info ? { ...fp.info } : null
+            }))
+          };
+        });
+
+        const oldSeqs = Object.values(appState.operation_sequences).filter(
+          s => s.task_id === srcTask.id
+        );
+
+        oldSeqs.forEach(seq => {
+          const newSeqId = createId();
+          const newGroupId = groupIdMap[seq.file_group_id];
+          if (!newGroupId) return;
+
+          const oldNodes = Array.isArray(seq.nodes) ? seq.nodes : [];
+          const idMap = {};
+          const newNodes = oldNodes.map((n, index) => {
+            const newId = createId();
+            idMap[n.id] = newId;
+            return {
+              id: newId,
+              node_type: n.node_type,
+              name: n.name,
+              function_name: n.function_name,
+              params_json: n.params_json,
+              description: n.description,
+              result_save_path: n.result_save_path || (n.node_type === "op" ? "" : null),
+              executed: false,   // 副本全部重置为未执行
+              parent_id: null    // 先占位，下一步再填
+            };
+          });
+
+          // 第二轮：根据旧 parent_id 用 idMap 映射到新的节点 id
+          newNodes.forEach((newNode, index) => {
+            const oldNode = oldNodes[index];
+            const oldPid = oldNode.parent_id;
+
+            if (oldPid == null) {
+              // 根节点
+              newNode.parent_id = null;
+            } else if (idMap[oldPid]) {
+              // 正常情况：能在 idMap 里找到对应的新父节点
+              newNode.parent_id = idMap[oldPid];
+            } else {
+              // 兜底：万一旧数据 parent_id 异常，就按线性链处理
+              newNode.parent_id = index === 0 ? null : newNodes[index - 1].id;
+            }
+          });
+          // ✅ 把 params_json 里引用“旧序列内部节点输出”的 $ref 重写成新序列/新节点
+          newNodes.forEach(n => {
+            if (n.node_type !== "op") return;
+
+            n.params_json = rewriteRefsInParamsJson(n.params_json, (ref) => {
+              if (ref.kind !== "node_output") return null;
+
+              // 只重写“指向被复制的那条旧序列”的引用（避免误伤跨序列引用）
+              if (ref.sequence_id !== seq.id) return null;
+
+              const mappedNodeId = idMap[ref.node_id];
+              if (!mappedNodeId) return null;
+
+              return {
+                ...ref,
+                sequence_id: newSeqId,
+                node_id: mappedNodeId
+              };
+            });
+          });
+
+          appState.operation_sequences[newSeqId] = {
+            id: newSeqId,
+            name: seq.name,
+            task_id: newTaskId,
+            file_group_id: newGroupId,
+            code_save_path: seq.code_save_path,
+            show_meta: seq.show_meta || false,
+            collapsed: seq.collapsed || false,
+            display_index: typeof seq.display_index === "number" ? seq.display_index : 0,
+            nodes: newNodes
+          };
+        });
+
+        uiState.currentTaskId = newTaskId;
+        scheduleSaveState();
+      }
+    } else if (type === "task") {
+      const taskId = payload.id;
+      const task = appState.tasks[taskId];
+      if (!task) return;
+
+      if (action === "rename-task") {
+        const newName = prompt("请输入新的任务名称：", task.name);
+        if (!newName) return;
+        const siblings = Object.values(appState.tasks).filter(
+          t => (t.directory_id || "root") === (task.directory_id || "root") && t.id !== taskId
+        ).map(t => t.name);
+        if (siblings.includes(newName.trim())) {
+          showMessage("同一目录下任务名称不得重复。");
+          return;
+        }
+        task.name = newName.trim();
+        scheduleSaveState();
+      } else if (action === "delete-task") {
+        const ok = confirm("确定要删除该任务及其文件组、操作序列吗？");
+        if (!ok) return;
+        delete appState.tasks[taskId];
+        for (const fgId in appState.file_groups) {
+          if (appState.file_groups[fgId].task_id === taskId) {
+            delete appState.file_groups[fgId];
+          }
+        }
+        for (const seqId in appState.operation_sequences) {
+          if (appState.operation_sequences[seqId].task_id === taskId) {
+            delete appState.operation_sequences[seqId];
+          }
+        }
+        if (uiState.currentTaskId === taskId) {
+          uiState.currentTaskId = null;
+        }
+        scheduleSaveState();
+      } else if (action === "copy-task-name") {
+        copyToClipboard(task.name || "");
+      } else if (action === "copy-task-full") {
+        copiedTaskIdForFullCopy = taskId;
+        showMessage("已复制完整任务，可以在目录上右键选择“粘贴任务”。");
+      }
+    }
+
+    // 第二列：文件组 & 文件路径
+    if (type === "group-empty") {
+      if (action === "create-file-group") {
+        const task = getCurrentTask();
+        if (!task) {
+          showMessage("请先选中一个任务。");
+          return;
+        }
+        const existingNames = groupsForTask(task.id).map(g => g.name);
+        const defaultName = generateUniqueName("第一组", existingNames);
+        const name = prompt("请输入文件组名称：", defaultName);
+        if (!name) return;
+
+        const existingGroups = groupsForTask(task.id);
+        const maxIndex = existingGroups.reduce((m, g) => {
+          const v = (typeof g.display_index === "number") ? g.display_index : m;
+          return Math.max(m, v);
+        }, -1);
+
+        const id = createId();
+        appState.file_groups[id] = {
+          id,
+          name: name.trim(),
+          task_id: task.id,
+          file_paths: [],
+          collapsed: false,
+          display_index: maxIndex + 1
+        };
+        scheduleSaveState();
+      }
+    } else if (type === "file-group") {
+      const groupId = payload.groupId;
+      const group = appState.file_groups[groupId];
+      if (!group) return;
+
+      if (action === "rename-file-group") {
+        const task = getCurrentTask();
+        if (!task) {
+          showMessage("任务不存在。");
+          return;
+        }
+        const existingNames = groupsForTask(task.id)
+          .filter(g => g.id !== groupId)
+          .map(g => g.name);
+        const newName = prompt("请输入新的文件组名称：", group.name);
+        if (!newName) return;
+        const trimmed = newName.trim();
+        if (existingNames.includes(trimmed)) {
+          showMessage("同一任务下文件组名称不得重复。");
+          return;
+        }
+
+        // 1. 更新文件组名称
+        group.name = trimmed;
+
+        // 2. 同步更新所有绑定到该文件组的操作序列中的 root 节点显示名称
+        for (const seqId in appState.operation_sequences) {
+          const seq = appState.operation_sequences[seqId];
+          if (seq.file_group_id === groupId && Array.isArray(seq.nodes)) {
+            const rootNode = seq.nodes.find(n => n.node_type === "root");
+            if (rootNode) {
+              rootNode.name = trimmed;
+            }
+          }
+        }
+
+        scheduleSaveState();
+      } else if (action === "delete-file-group") {
+        const ok = confirm("删除文件组会同时删除该组下所有路径及绑定的操作序列，确定？");
+        if (!ok) return;
+        delete appState.file_groups[groupId];
+        for (const seqId in appState.operation_sequences) {
+          if (appState.operation_sequences[seqId].file_group_id === groupId) {
+            delete appState.operation_sequences[seqId];
+          }
+        }
+        scheduleSaveState();
+      } else if (action === "copy-file-group-name") {
+        copyToClipboard(group.name || "");
+      } else if (action === "add-file-paths") {
+        const text = prompt(
+          "请输入文件路径（必须为绝对路径，支持通配符，可用 {{var}} 占位符），可多行输入：",
+          ""
+        );
+        if (!text) return;
+        const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        const existingPaths = new Set(
+          (group.file_paths || []).map(fp => fp.path)
+        );
+        lines.forEach(line => {
+          if (existingPaths.has(line)) return;
+          const id = createId();
+          group.file_paths.push({
+            id,
+            path: line,
+            info: null
+          });
+          existingPaths.add(line);
+        });
+        scheduleSaveState();
+      } else if (action === "create-sequence-board") {
+        const task = getCurrentTask();
+        if (!task) {
+          showMessage("请先选中一个任务。");
+          return;
+        }
+        const defaultName = "操作序列";
+        const existingNames = sequenceNodesForTask(task.id).map(s => s.name);
+        const name = prompt(
+          "请输入操作序列名称：",
+          generateUniqueName(defaultName, existingNames)
+        );
+        if (!name) return;
+
+        const seqId = createId();
+        const rootNodeId = createId();
+
+        const existingSeqs = sequenceNodesForTask(task.id);
+        const maxIndex = existingSeqs.reduce((m, s) => {
+          const v = (typeof s.display_index === "number") ? s.display_index : m;
+          return Math.max(m, v);
+        }, -1);
+
+        appState.operation_sequences[seqId] = {
+          id: seqId,
+          name: name.trim(),
+          task_id: task.id,
+          file_group_id: groupId,
+          code_save_path: null,
+          show_meta: false,
+          collapsed: false,
+          display_index: maxIndex + 1,
+          nodes: [
+            {
+              id: rootNodeId,
+              node_type: "root",
+              name: group.name,
+              function_name: null,
+              params_json: "{}",
+              description: "根节点：文件组合并后的数据",
+              result_save_path: null,   // root 没有路径，仅占位
+              executed: false,
+              parent_id: null           // 新增：根节点 parent_id 固定为 null
+            }
+          ]
+        };
+        scheduleSaveState();
+      } else if (action === "paste-sequence") {
+        if (!copiedSequenceTemplate) {
+          showMessage("当前没有可粘贴的操作序列。");
+          return;
+        }
+
+        const group = appState.file_groups[groupId];
+        if (!group) return;
+
+        const targetTaskId = group.task_id;
+        const targetTask = appState.tasks[targetTaskId];
+        if (!targetTask) {
+          showMessage("目标文件组所属任务不存在。");
+          return;
+        }
+
+        const { seq: srcSeq, fromTaskId, fromTaskName } = copiedSequenceTemplate;
+
+        // ====== 跨任务提示（只在跨任务时出现） ======
+        if (fromTaskId !== targetTaskId) {
+          const ok = confirm(
+            `该操作序列来自任务【${fromTaskName}】，\n` +
+            `即将粘贴到任务【${targetTask.name}】。\n\n` +
+            `请确认：\n` +
+            `1. 两个任务的数据结构是兼容的\n` +
+            `2. 所用 {{var}} 在目标任务中已定义\n\n` +
+            `是否继续？`
+          );
+          if (!ok) return;
+        }
+
+        // ===== 新 sequence ID =====
+        const newSeqId = createId();
+
+        // ===== display_index：排到最后 =====
+        const existingSeqs = sequenceNodesForTask(targetTaskId);
+        const maxIndex = existingSeqs.reduce((m, s) => {
+          const v = (typeof s.display_index === "number") ? s.display_index : m;
+          return Math.max(m, v);
+        }, -1);
+
+        // ===== 复制 nodes & 重建 id 映射 =====
+        const oldNodes = Array.isArray(srcSeq.nodes) ? srcSeq.nodes : [];
+        const idMap = {};
+        const newNodes = oldNodes.map(oldNode => {
+          const newId = createId();
+          idMap[oldNode.id] = newId;
+          return {
+            ...oldNode,
+            id: newId,
+            executed: false,   // 跨任务必须全部重置
+            parent_id: null
+          };
+        });
+
+        // ===== 修复 parent_id =====
+        newNodes.forEach((newNode, index) => {
+          const oldNode = oldNodes[index];
+          if (oldNode.parent_id == null) {
+            newNode.parent_id = null;
+          } else if (idMap[oldNode.parent_id]) {
+            newNode.parent_id = idMap[oldNode.parent_id];
+          } else {
+            // 兜底退化
+            newNode.parent_id = index === 0 ? null : newNodes[index - 1].id;
+          }
+        });
+
+        // ✅ 把 params_json 里引用“旧序列内部节点输出”的 $ref 重写成新序列/新节点
+        newNodes.forEach(n => {
+          if (n.node_type !== "op") return;
+
+          n.params_json = rewriteRefsInParamsJson(n.params_json, (ref) => {
+            if (ref.kind !== "node_output") return null;
+
+            // 只重写“指向被复制的那条旧序列”的引用（避免误伤跨序列引用）
+            if (ref.sequence_id !== srcSeq.id) return null;
+
+            const mappedNodeId = idMap[ref.node_id];
+            if (!mappedNodeId) return null;
+
+            return {
+              ...ref,
+              sequence_id: newSeqId,
+              node_id: mappedNodeId
+            };
+          });
+        });
+
+        // ===== root 节点名称同步为目标文件组名 =====
+        const rootNode = newNodes.find(n => n.node_type === "root");
+        if (rootNode) {
+          rootNode.name = group.name;
+        }
+
+        // ===== 最终生成新的操作序列 =====
+        appState.operation_sequences[newSeqId] = {
+          id: newSeqId,
+          name: srcSeq.name + "（跨任务副本）",
+          task_id: targetTaskId,
+          file_group_id: groupId,
+          code_save_path: srcSeq.code_save_path,
+          show_meta: false,
+          collapsed: false,
+          display_index: maxIndex + 1,
+          nodes: newNodes
+        };
+
+        scheduleSaveState();
+      }
+    } else if (type === "file-path") {
+      const { groupId, filePathId } = payload;
+      const group = appState.file_groups[groupId];
+      if (!group) return;
+      const idx = (group.file_paths || []).findIndex(fp => fp.id === filePathId);
+      if (idx === -1) return;
+      const fp = group.file_paths[idx];
+      const taskId = group.task_id;
+
+      if (action === "delete-file-path") {
+        group.file_paths.splice(idx, 1);
+        if (uiState.selectedFilePathId === filePathId) {
+          uiState.selectedFilePathId = null;
+          uiState.fieldStructure = null;
+        }
+        scheduleSaveState();
+      } else if (action === "copy-file-path") {
+        copyToClipboard(fp.path || "");
+      } else if (action === "edit-file-path") {
+        const newPath = prompt("请输入新的文件路径（绝对路径，支持通配符，可用 {{var}}）：", fp.path);
+        if (!newPath) return;
+        const trimmed = newPath.trim();
+        const exists = (group.file_paths || []).some(
+          other => other.id !== filePathId && other.path === trimmed
+        );
+        if (exists) {
+          showMessage("同一文件组下文件路径不得重复。");
+          return;
+        }
+        fp.path = trimmed;
+        fp.info = null;
+        if (uiState.selectedFilePathId === filePathId) {
+          uiState.fieldStructure = null;
+        }
+        scheduleSaveState();
+      } else if (action === "show-file-info") {
+        const resolvedPath = resolveTaskVarsInString(fp.path, taskId);
+        const info = await requestFileInfo(resolvedPath);
+        if (!info) return;
+        fp.info = info;
+        scheduleSaveState();
+      } else if (action === "copy-first-line" || action === "copy-last-line") {
+        const resolvedPath = resolveTaskVarsInString(fp.path, taskId);
+        const res = await requestHeadTail(resolvedPath);
+        if (!res) return;
+        const text = action === "copy-first-line" ? res.first : res.last;
+        if (!text) {
+          showMessage("未找到非空行。");
+          return;
+        }
+        copyToClipboard(text);
+      }
+    }
+
+    // 第四列：操作序列 & 节点
+    if (type === "sequence-board") {
+      const seqId = payload.sequenceId;
+      const seq = appState.operation_sequences[seqId];
+      if (!seq) return;
+
+      if (action === "rename-sequence-board") {
+        let newName = prompt("请输入新的操作序列名称：", seq.name || "");
+        if (!newName) return;
+        newName = newName.trim();
+        if (!newName) {
+          showMessage("操作序列名称不能为空。");
+          return;
+        }
+
+        const taskId = seq.task_id;
+        const existingNames = sequenceNodesForTask(taskId)
+          .filter(s => s.id !== seqId)
+          .map(s => s.name);
+        if (existingNames.includes(newName)) {
+          showMessage("同一任务下操作序列名称不得重复。");
+          return;
+        }
+
+        seq.name = newName;
+        scheduleSaveState();
+      } else if (action === "delete-sequence-board") {
+        const ok = confirm("确定要删除该操作序列画板吗？");
+        if (!ok) return;
+        delete appState.operation_sequences[seqId];
+        scheduleSaveState();
+      } else if (action === "generate-code") {
+        const task = getCurrentTask();
+        if (!task) {
+          showMessage("任务不存在。");
+          return;
+        }
+        await requestGenerateCode(task.id, seqId);
+      } else if (action === "run-sequence") {
+        const task = getCurrentTask();
+        if (!task) {
+          showMessage("任务不存在。");
+          return;
+        }
+        await requestRunSequence(task.id, seqId);
+      } else if (action === "copy-sequence-full") {
+        const seq = appState.operation_sequences[seqId];
+        if (!seq) return;
+
+        const task = appState.tasks[seq.task_id];
+
+        copiedSequenceTemplate = {
+          seq: JSON.parse(JSON.stringify(seq)),
+          fromTaskId: seq.task_id,
+          fromTaskName: task ? task.name : "(未知任务)"
+        };
+
+        showMessage(
+          `已复制操作序列（来自任务：${copiedSequenceTemplate.fromTaskName}），可在任意文件组上粘贴。`
+        );
+      }
+    } else if (type === "root-node" || type === "op-node") {
+      const seqId = payload.sequenceId;
+      const nodeId = payload.nodeId;
+      const seq = appState.operation_sequences[seqId];
+      if (!seq) return;
+      const nodes = seq.nodes || [];
+      const idx = nodes.findIndex(n => n.id === nodeId);
+      if (action === "set-executed-false") {
+        setNodeExecutedWithPropagation(seqId, nodeId, false);
+        return;
+      }
+      if (action === "set-executed-true") {
+        setNodeExecutedWithPropagation(seqId, nodeId, true);
+        return;
+      }
+      if (idx === -1) return;
+      if (action === "toggle-freeze-node") {
+        const node = nodes[idx];
+        const newStatus = !node.frozen; // 切换状态
+
+        // 递归函数：设置节点及其所有后代的 frozen 状态
+        function setFrozenRecursive(targetId, status) {
+          // 1. 设置当前节点
+          const targetNode = nodes.find(n => n.id === targetId);
+          if (targetNode) {
+            targetNode.frozen = status;
+            
+            // 2. 查找所有以当前节点为父节点的子节点，并递归
+            const children = nodes.filter(n => n.parent_id === targetId);
+            children.forEach(child => {
+              setFrozenRecursive(child.id, status);
+            });
+          }
+        }
+
+        // 执行递归更新
+        setFrozenRecursive(node.id, newStatus);
+        
+        // 保存状态
+        scheduleSaveState();
+      } 
+
+      // ========= 线性插入：A -> C 变成 A -> B -> C（支持多分支，B 变成公共前缀） =========
+      if (action === "insert-linear-node") {
+        // 所有当前以该节点为父节点的子节点
+        const children = nodes.filter(n => n.parent_id === nodeId);
+
+        const newNode = {
+          id: createId(),
+          node_type: "op",
+          name: "新节点",
+          function_name: "",
+          params_json: "{}",
+          description: "",
+          result_save_path: "",
+          executed: false,
+          parent_id: nodeId   // 先挂在当前节点下面
+        };
+
+        // 在线性顺序上插到当前节点之后
+        nodes.splice(idx + 1, 0, newNode);
+
+        // 所有原本的子节点统一下沉到新节点下面
+        children.forEach(child => {
+          child.parent_id = newNode.id;
+        });
+
+        scheduleSaveState();
+
+      // ========= 原来的“插入子节点”：只多一个分支，不动已有子节点 =========
+      } else if (action === "insert-child-node") {
+        const newNode = {
+          id: createId(),
+          node_type: "op",
+          name: "新节点",
+          function_name: "",
+          params_json: "{}",
+          description: "",
+          result_save_path: "",
+          executed: false,
+          parent_id: nodeId
+        };
+        nodes.splice(idx + 1, 0, newNode);
+        scheduleSaveState();
+
+      } else if (action === "insert-multi-child-nodes") {
+        let countStr = prompt("请输入要创建的子节点数量（2-5）：", "2");
+        if (!countStr) return;
+        let count = parseInt(countStr, 10);
+        if (isNaN(count)) count = 2;
+        if (count < 2) count = 2;
+        if (count > 5) count = 5;
+
+        // 插入位置：当前节点之后，且在已有子节点之后
+        let insertIndex = idx + 1;
+        for (let i = nodes.length - 1; i > idx; i--) {
+          if (nodes[i].parent_id === nodeId) {
+            insertIndex = i + 1;
+            break;
+          }
+        }
+
+        const newNodes = [];
+        for (let i = 0; i < count; i++) {
+          newNodes.push({
+            id: createId(),
+            node_type: "op",
+            name: "分支节点 " + (i + 1),
+            function_name: "",
+            params_json: "{}",
+            description: "",
+            result_save_path: "",
+            executed: false,
+            parent_id: nodeId
+          });
+        }
+        nodes.splice(insertIndex, 0, ...newNodes);
+        scheduleSaveState();
+
+      // ========= 原有删除：删自己 + 所有后代（危险操作，语义不变） =========
+      } else if (action === "delete-child-node") {
+        const node = nodes[idx];
+        if (node.node_type === "root") {
+          showMessage("根节点不允许删除。");
+          return;
+        }
+        // 级联删除：该节点及其所有后代
+        const toDelete = new Set();
+        function markDescendants(id) {
+          for (const n of nodes) {
+            if (n.parent_id === id) {
+              markDescendants(n.id);
+            }
+          }
+          toDelete.add(id);
+        }
+        markDescendants(node.id);
+        seq.nodes = nodes.filter(n => !toDelete.has(n.id));
+        scheduleSaveState();
+
+      // ========= 新增删除：桥接删除（删除当前节点，但把子节点挂回父节点） =========
+      } else if (action === "delete-child-node-bridge") {
+        const node = nodes[idx];
+        if (node.node_type === "root") {
+          showMessage("根节点不允许桥接删除。");
+          return;
+        }
+
+        const parentId = node.parent_id || null;
+        const children = nodes.filter(n => n.parent_id === node.id);
+
+        // 子节点挂回父节点（如果 parentId 为 null，则子节点变成新的根）
+        children.forEach(child => {
+          child.parent_id = parentId;
+        });
+
+        // 删除当前节点本身
+        nodes.splice(idx, 1);
+
+        scheduleSaveState();
+
+      } else if (action === "copy-op-node") {
+        const node = nodes[idx];
+        if (node.node_type !== "op") {
+          showMessage("只有非根节点可以复制。");
+          return;
+        }
+        copiedOpNodeTemplate = {
+          node_type: "op",
+          name: node.name,
+          function_name: node.function_name,
+          params_json: node.params_json,
+          description: node.description,
+          result_save_path: node.result_save_path || ""
+        };
+        // showMessage("已复制该节点，可在任意节点上右键粘贴。");
+
+      // ========= 新增：线性粘贴 =========
+      } else if (action === "paste-op-node-linear") {
+        if (!copiedOpNodeTemplate) {
+          showMessage("当前没有已复制的节点。");
+          return;
+        }
+        const base = copiedOpNodeTemplate;
+        const children = nodes.filter(n => n.parent_id === nodeId);
+
+        const newNode = {
+          id: createId(),
+          node_type: "op",
+          name: base.name,
+          function_name: base.function_name,
+          params_json: base.params_json,
+          description: base.description,
+          result_save_path: base.result_save_path || "",
+          executed: false,
+          parent_id: nodeId
+        };
+
+        // 插到当前节点后面
+        nodes.splice(idx + 1, 0, newNode);
+
+        // 所有原子节点统一下沉到新节点下面
+        children.forEach(child => {
+          child.parent_id = newNode.id;
+        });
+
+        scheduleSaveState();
+
+      // ========= 保留原有“向下粘贴已复制节点”语义：新分支 =========
+      } else if (action === "paste-op-node-below") {
+        if (!copiedOpNodeTemplate) {
+          showMessage("当前没有已复制的节点。");
+          return;
+        }
+        const base = copiedOpNodeTemplate;
+        const newNode = {
+          id: createId(),
+          node_type: "op",
+          name: base.name,
+          function_name: base.function_name,
+          params_json: base.params_json,
+          description: base.description,
+          result_save_path: base.result_save_path || "",
+          executed: false,
+          parent_id: nodeId
+        };
+        nodes.splice(idx + 1, 0, newNode);
+        scheduleSaveState();
+      }
+    }
+  }
+
+  // ===========
+  // 绑定右键事件
+  // ===========
+
+  document.getElementById("task-tree").addEventListener("contextmenu", e => {
+    e.preventDefault();
+    const node = e.target.closest("[data-node-type]");
+    if (!node) {
+      showContextMenu("task-empty", {}, e.pageX, e.pageY);
+      return;
+    }
+    const type = node.dataset.nodeType;
+    if (type === "directory") {
+      showContextMenu("directory", { id: node.dataset.id }, e.pageX, e.pageY);
+    } else if (type === "task") {
+      showContextMenu("task", { id: node.dataset.id }, e.pageX, e.pageY);
+    }
+  });
+
+  document.getElementById("file-groups").addEventListener("contextmenu", e => {
+    e.preventDefault();
+    const groupEl = e.target.closest(".file-group");
+    const pathEl = e.target.closest(".file-path-row");
+    if (pathEl && groupEl) {
+      showContextMenu(
+        "file-path",
+        {
+          groupId: groupEl.dataset.groupId,
+          filePathId: pathEl.dataset.filePathId
+        },
+        e.pageX,
+        e.pageY
+      );
+    } else if (groupEl) {
+      showContextMenu(
+        "file-group",
+        { groupId: groupEl.dataset.groupId },
+        e.pageX,
+        e.pageY
+      );
+    } else {
+      showContextMenu("group-empty", {}, e.pageX, e.pageY);
+    }
+  });
+
+  document.getElementById("operation-area").addEventListener("contextmenu", e => {
+    e.preventDefault();
+    const sequenceHeader = e.target.closest(".sequence-header");
+    const nodeEl = e.target.closest(".sequence-node");
+    if (sequenceHeader) {
+      showContextMenu(
+        "sequence-board",
+        { sequenceId: sequenceHeader.dataset.sequenceId },
+        e.pageX,
+        e.pageY
+      );
+    } else if (nodeEl) {
+      const nodeType = nodeEl.dataset.nodeType;
+      if (nodeType === "root-node") {
+        showContextMenu(
+          "root-node",
+          {
+            sequenceId: nodeEl.dataset.sequenceId,
+            nodeId: nodeEl.dataset.nodeId
+          },
+          e.pageX,
+          e.pageY
+        );
+      } else if (nodeType === "op-node") {
+        showContextMenu(
+          "op-node",
+          {
+            sequenceId: nodeEl.dataset.sequenceId,
+            nodeId: nodeEl.dataset.nodeId
+          },
+          e.pageX,
+          e.pageY
+        );
+      }
+    }
+  });
+
+  // ===========
+  // 列宽拖动
+  // ===========
+
+  function setupResizeHandles() {
+    const mainEl = document.getElementById("main");
+    const handles = document.querySelectorAll(".resize-handle");
+    let isDragging = false;
+    let dragIndex = null;
+    let startX = 0;
+    let startWidths = null;
+
+    handles.forEach(handle => {
+      handle.addEventListener("mousedown", e => {
+        e.preventDefault();
+        isDragging = true;
+        dragIndex = parseInt(handle.dataset.handle, 10) - 1;
+        startX = e.clientX;
+        startWidths = getCurrentColumnWidths();
+      });
+    });
+
+    document.addEventListener("mousemove", e => {
+      if (!isDragging || dragIndex == null) return;
+
+      const dx = e.clientX - startX;
+      const mainRect = mainEl.getBoundingClientRect();
+      const totalWidth = mainRect.width;
+      if (!totalWidth) return;
+
+      const deltaPercent = dx / totalWidth * 100;
+
+      const widths = startWidths.slice();
+      const left = widths[dragIndex];
+      const right = widths[dragIndex + 1];
+      const pair = left + right;
+
+      // 每列最小宽度（百分比）
+      const MIN = 10;
+      if (pair <= MIN * 2) return; // 极端兜底（正常不会发生）
+
+      // 在 [MIN, pair - MIN] 之间移动 newLeft，保证两边都不会小于 MIN
+      let newLeft = left + deltaPercent;
+      newLeft = Math.max(MIN, Math.min(pair - MIN, newLeft));
+      const newRight = pair - newLeft;
+
+      widths[dragIndex] = newLeft;
+      widths[dragIndex + 1] = newRight;
+
+      applyColumnWidths(widths);
+    });
+
+    document.addEventListener("mouseup", () => {
+      if (isDragging) {
+        isDragging = false;
+        const widths = getCurrentColumnWidths();
+        saveWidthsToLocal(widths);
+      }
+      dragIndex = null;
+    });
+  }
+
+  // ======================
+  // 任务变量弹窗（可拖动 textarea）
+  // ======================
+  (function setupTaskVarsModal(){
+    const modal = document.getElementById("taskvars-modal");
+    const ta = document.getElementById("taskvars-textarea");
+    const btnClose = document.getElementById("taskvars-close");
+    const btnCancel = document.getElementById("taskvars-cancel");
+    const btnSave = document.getElementById("taskvars-save");
+    const backdrop = document.getElementById("taskvars-backdrop");
+
+    function openWithText(text){
+      ta.value = (text ?? "").toString().trim();   // ✅ 回写最终值（trim）
+      modal.style.display = "flex";
+      setTimeout(() => ta.focus(), 0);
+    }
+
+    function close(){
+      modal.style.display = "none";
+    }
+
+    function save(){
+      ta.value = (ta.value || "").trim();          // ✅ 回写最终值（trim）
+
+      let obj = null;
+      try {
+        obj = ta.value ? JSON.parse(ta.value) : {};
+      } catch (e) {
+        showMessage("任务变量不是合法 JSON，未保存。");
+        return;
+      }
+      if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+        showMessage("任务变量必须是 JSON 对象：{...}，未保存。");
+        return;
+      }
+
+      const task = getCurrentTask();
+      if (!task) {
+        showMessage("任务不存在。");
+        return;
+      }
+      task.vars = obj;
+      scheduleSaveState(); // ✅ 仍然走你现有的保存/撤销体系
+      close();
+      showMessage("任务变量已保存。");
+    }
+
+    btnClose.addEventListener("click", close);
+    btnCancel.addEventListener("click", close);
+    backdrop.addEventListener("click", close);
+    btnSave.addEventListener("click", save);
+
+    // 暴露一个全局函数给按钮调用
+    window.__openTaskVarsModal = openWithText;
+  })();
+  // ===========
+  // 顶部按钮
+  // ===========
+
+  const btnTaskVars = document.getElementById("btn-task-vars");
+  if (btnTaskVars) {
+    btnTaskVars.addEventListener("click", () => {
+      const task = getCurrentTask();
+      if (!task) {
+        showMessage("请先在左侧选择一个任务。");
+        return;
+      }
+
+      // 把当前 vars 格式化成 JSON 文本，塞进弹窗 textarea
+      const currentVars = task.vars || {};
+      const initial = JSON.stringify(currentVars, null, 2);
+
+      // 打开弹窗（这个函数来自你新增的 setupTaskVarsModal）
+      if (window.__openTaskVarsModal) {
+        window.__openTaskVarsModal(initial);
+      } else {
+        showMessage("任务变量弹窗未初始化：请确认已添加 taskvars-modal HTML + setupTaskVarsModal() JS。");
+      }
+    });
+  }
+
+  const btnUndo = document.getElementById("btn-undo");
+  if (btnUndo) {
+    btnUndo.addEventListener("click", () => {
+      undoLastOperation();
+    });
+  }
+
+  const btnRedo = document.getElementById("btn-redo");
+  if (btnRedo) {
+    btnRedo.addEventListener("click", () => {
+      redoLastOperation();
+    });
+  }
+
+  document.getElementById("btn-save").addEventListener("click", () => {
+    saveStateToServer();
+  });
+
+  document.getElementById("btn-reload").addEventListener("click", () => {
+    loadStateFromServer();
+  });
+
+  // ===========
+  // 渲染入口
+  // ===========
+
+  function renderAll() {
+    renderTaskTree();
+    renderFileGroups();
+    renderFieldStructure();
+    renderOperationArea();
+  }
+
+  // ===========
+  // 初始化
+  // ===========
+
+  (function init() {
+    const widths = loadWidthsFromLocal();
+    if (widths) {
+      applyColumnWidths(widths);
+    }
+    setupResizeHandles();
+    loadStateFromServer();
+  })();
+</script>
+</body>
+</html>
