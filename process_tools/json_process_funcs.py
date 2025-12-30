@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Union, Tuple
 from functools import lru_cache
 from dataclasses import dataclass
 import glob
@@ -21,7 +21,6 @@ class PathStep:
     indices: Optional[List[int]] = None
 
 
-@lru_cache(maxsize=1024)
 def _parse_path(path: str) -> List[PathStep]:
     """
     将路径字符串解析为 PathStep 列表。
@@ -519,7 +518,7 @@ def _resolve_indices(n: int, raw_indices: List[int]) -> List[int]:
     return out
 
 
-def get_values_by_key_path(item: Any, key_path: str) -> List[Any]:
+def get_values_by_key_path_backup(item: Any, key_path: str) -> List[Any]:
     """
     输入一个 item 和 key_path，返回所有“走得到”的值（列表）。
 
@@ -568,6 +567,98 @@ def get_values_by_key_path(item: Any, key_path: str) -> List[Any]:
             break
 
     return current_nodes
+
+
+# mode 常量：用 int 比字符串判断快一些
+M_DICT = 0
+M_ALL = 1
+M_IND = 2
+_MISSING = object()
+
+@lru_cache(maxsize=1024)
+def _compile_key_path(path: str) -> Tuple[Tuple[int, str, Optional[Tuple[int, ...]]], ...]:
+    steps = _parse_path(path)  # 复用你现有的解析（已缓存）
+    compiled = []
+    for s in steps:
+        if s.mode == "dict":
+            compiled.append((M_DICT, s.key, None))
+        elif s.mode == "all":
+            compiled.append((M_ALL, s.key, None))
+        elif s.mode == "indices":
+            compiled.append((M_IND, s.key, tuple(s.indices or ())))
+        else:
+            raise ValueError(f"unknown mode: {s.mode}")
+    return tuple(compiled)
+
+
+def get_values_by_key_path(item: Any, key_path: str) -> List[Any]:
+    steps = _compile_key_path(key_path)
+    if not steps:
+        return [item]
+
+    # fast-path：全是 dict 下钻（没有 [] / [idx]）
+    # 语义上：返回“最后那个值”，并用 list 包一下，和你原函数一致
+    if all(m == M_DICT for (m, _, __) in steps):
+        cur = item
+        try:
+            for (_, k, __) in steps:
+                cur = cur[k]  # 手写索引的形态
+        except (TypeError, KeyError):
+            return []
+        return [cur]
+
+    # 通用：栈式 DFS，避免每层 next_nodes 列表分配
+    out: List[Any] = []
+    stack: List[Tuple[Any, int]] = [(item, 0)]
+    nsteps = len(steps)
+
+    while stack:
+        node, i = stack.pop()
+        if i == nsteps:
+            out.append(node)
+            continue
+
+        mode, key, idxs = steps[i]
+        next_i = i + 1
+        is_last = (next_i == nsteps)
+
+        if mode == M_DICT:
+            if isinstance(node, dict):
+                nxt = node.get(key, _MISSING)
+                if nxt is not _MISSING:
+                    stack.append((nxt, next_i))
+
+        elif mode == M_ALL:
+            if isinstance(node, dict):
+                lst = node.get(key, _MISSING)
+                if isinstance(lst, list):
+                    if is_last:
+                        # .a.b[] 作为最后一段：展开元素
+                        # 为了保持顺序，反向压栈 or 直接 extend（这里直接 extend）
+                        out.extend(lst)
+                    else:
+                        # 为了保持和你旧实现一致的顺序（左到右），需要反向压栈
+                        for elem in reversed(lst):
+                            stack.append((elem, next_i))
+
+        else:  # M_IND
+            if isinstance(node, dict):
+                lst = node.get(key, _MISSING)
+                if isinstance(lst, list) and idxs:
+                    n = len(lst)
+                    # 保持 idxs 原有顺序；负下标按 Python 语义
+                    picked = []
+                    for raw in idxs:
+                        j = raw if raw >= 0 else n + raw
+                        if 0 <= j < n:
+                            picked.append(lst[j])
+                    if is_last:
+                        out.extend(picked)
+                    else:
+                        for elem in reversed(picked):
+                            stack.append((elem, next_i))
+
+    return out
 
 
 def read_jsonl(path_patterns, is_root=False):
