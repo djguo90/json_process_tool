@@ -2316,17 +2316,6 @@
 
       refBar.appendChild(btnInsertGroupRef);
       refBar.appendChild(btnInsertNodeOutRef);
-      // ✅ 方案A：阻止按钮抢焦点，避免 paramsTextarea blur 触发 JSON 校验弹窗
-      function preventButtonStealFocus(btn) {
-        // Safari/Chrome/Edge 基本都支持 pointerdown
-        btn.addEventListener("pointerdown", (ev) => {
-          ev.preventDefault(); // 不让按钮获得焦点
-        });
-        // 兜底：少数环境只有 mousedown
-        btn.addEventListener("mousedown", (ev) => {
-          ev.preventDefault();
-        });
-      }
 
       // 对三个按钮都生效
       preventButtonStealFocus(btnInsertGroupRef);
